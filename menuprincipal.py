@@ -73,7 +73,7 @@ def modificar_hilo():
             return
     print("No se encontró un hilo con ese código.")
 
-    
+
 #Eliminar hilo si no hay unidades disponibles
 def eliminar_hilo():
     print("\n--- Eliminar hilo ---")
@@ -88,3 +88,15 @@ def eliminar_hilo():
                 print("No se puede eliminar. Aún hay unidades disponibles")
             return
     print("No se encontró un hilo con ese código")
+
+
+#Mostrar todo el inventario de hilos
+def mostrar_inventario():
+    print("\n--- Inventario de hilos ---")
+    if not inventario:
+        print("No hay hilos registrados.")
+    else:
+        for h in inventario:
+            print(f"Marca: {h['marca']} | Código: {h['codigo_color']} | "
+                  f"Descripción: {h['descripcion']} | Cantidad: {h['cantidad']} | "
+                  f"Precio: Q{h['precio_unitario']} | Proveedor: {h['proveedor']}")
