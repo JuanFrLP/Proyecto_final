@@ -1,6 +1,7 @@
 from openpyxl import Workbook, load_workbook
 
 inventario = []  # Lista donde se guardan los hilos
+contador_id = 1  # Contador global para IDs únicos
 
 # Función para actualizar Excel
 def actualizar_excel():
@@ -33,12 +34,9 @@ def actualizar_excel():
     wb.save(nombre_archivo)
     print("Archivo Excel actualizado correctamente.")
 
-# Función para generar ID único
-def generar_id():
-    return len(inventario) + 1
-
 # Registrar un nuevo hilo
 def registrar_hilo():
+    global contador_id
     print("\n--- Registrar nuevo hilo ---")
     marca = input("Marca: ")
 
@@ -80,7 +78,7 @@ def registrar_hilo():
     proveedor = input("Proveedor: ")
 
     hilo = {
-        "id": generar_id(),
+        "id": contador_id,
         "marca": marca,
         "codigo_color": codigo_color,
         "descripcion": descripcion,
@@ -90,7 +88,9 @@ def registrar_hilo():
     }
 
     inventario.append(hilo)
-    print("Hilo registrado con éxito.")
+    contador_id += 1  # Incrementar ID global
+
+    print(f"Hilo registrado con éxito. ID asignado: {hilo['id']}")
     actualizar_excel()
 
 # Buscar hilos por marca, código o descripción
