@@ -100,3 +100,35 @@ def mostrar_inventario():
             print(f"Marca: {h['marca']} | Código: {h['codigo_color']} | "
                   f"Descripción: {h['descripcion']} | Cantidad: {h['cantidad']} | "
                   f"Precio: Q{h['precio_unitario']} | Proveedor: {h['proveedor']}")
+            
+
+#Menú principal
+def menu():
+    while True:
+        print("\n---- MENÚ PRINCIPAL ----")
+        print("1. Registrar nuevo hilo")
+        print("2. Buscar hilo")
+        print("3. Modificar información")
+        print("4. Eliminar hilo")
+        print("5. Mostrar inventario completo")
+        print("6. Salir")
+
+        opcion = input("Seleccione una opción ")
+
+        if opcion == "1":
+            registrar_hilo()
+        elif opcion == "2":
+            buscar_hilo()
+        elif opcion == "3":
+            modificar_hilo()
+        elif opcion == "4":
+            eliminar_hilo()
+        elif opcion == "5":
+            mostrar_inventario()
+        elif opcion == "6":
+            print("Adios")
+            break
+        else:
+            print("Opción inválida")
+
+menu()
