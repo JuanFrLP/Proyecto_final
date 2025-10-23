@@ -72,3 +72,19 @@ def modificar_hilo():
             print("Información actualizada con éxito.")
             return
     print("No se encontró un hilo con ese código.")
+
+    
+#Eliminar hilo si no hay unidades disponibles
+def eliminar_hilo():
+    print("\n--- Eliminar hilo ---")
+    codigo = input("Ingrese el código de color del hilo a eliminar ")
+
+    for hilo in inventario:
+        if hilo["codigo_color"] == codigo:
+            if hilo["cantidad"] == 0:
+                inventario.remove(hilo)
+                print("Hilo eliminado del inventario")
+            else:
+                print("No se puede eliminar. Aún hay unidades disponibles")
+            return
+    print("No se encontró un hilo con ese código")
