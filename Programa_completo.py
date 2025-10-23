@@ -1,25 +1,43 @@
 from openpyxl import Workbook, load_workbook
+import os
 
 inventario = []  # Lista donde se guardan los hilos
 contador_id = 1  # Contador global para IDs únicos
+nombre_archivo = "inventario_hilos.xlsx"
 
-# Función para actualizar Excel
-def actualizar_excel():
-    nombre_archivo = "inventario_hilos.xlsx"
+# Limpiar pantalla
+def limpiar_pantalla():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
-    try:    
+# Cargar inventario desde Excel y sincronizar ID
+def cargar_inventario():
+    global contador_id
+    if os.path.exists(nombre_archivo):
         wb = load_workbook(nombre_archivo)
         hoja = wb.active
-        if hoja.max_row > 1:
-            hoja.delete_rows(2, hoja.max_row - 1)  # Borra todo excepto encabezados
-    except FileNotFoundError:
-        wb = Workbook()
-        hoja = wb.active
-        hoja.title = "Inventario de Hilos"
-        encabezados = ["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"]
-        hoja.append(encabezados)
+        for fila in hoja.iter_rows(min_row=2, values_only=True):
+            if fila[0] is not None:
+                hilo = {
+                    "id": fila[0],
+                    "marca": fila[1],
+                    "codigo_color": str(fila[2]),
+                    "descripcion": fila[3],
+                    "cantidad": fila[4],
+                    "precio_unitario": fila[5],
+                    "proveedor": fila[6]
+                }
+                inventario.append(hilo)
+        if inventario:
+            contador_id = max(h["id"] for h in inventario) + 1
 
-    # Agregar los datos actualizados
+# Actualizar Excel
+def actualizar_excel():
+    wb = Workbook()
+    hoja = wb.active
+    hoja.title = "Inventario de Hilos"
+    encabezados = ["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"]
+    hoja.append(encabezados)
+
     for hilo in inventario:
         hoja.append([
             hilo["id"],
@@ -32,15 +50,15 @@ def actualizar_excel():
         ])
 
     wb.save(nombre_archivo)
-    print("Archivo Excel actualizado correctamente.")
+    print("\n Archivo Excel actualizado correctamente.\n")
 
-# Registrar un nuevo hilo
+# Registrar nuevo hilo
 def registrar_hilo():
     global contador_id
-    print("\n--- Registrar nuevo hilo ---")
+    limpiar_pantalla()
+    print("=== Registrar Nuevo Hilo ===")
     marca = input("Marca: ")
 
-    # Validar código de color numérico y único
     while True:
         codigo_color = input("Código de color (solo números): ")
         if not codigo_color.isdigit():
@@ -53,27 +71,25 @@ def registrar_hilo():
 
     descripcion = input("Descripción: ")
 
-    # Validar cantidad
     while True:
         try:
             cantidad = int(input("Cantidad: "))
             if cantidad < 0:
-                print("Cantidad no puede ser negativa.")
+                print(" La cantidad no puede ser negativa.")
                 continue
             break
         except ValueError:
-            print("Ingrese un número entero válido para cantidad.")
+            print(" Ingrese un número entero válido.")
 
-    # Validar precio unitario
     while True:
         try:
             precio_unitario = float(input("Precio unitario: "))
             if precio_unitario < 0:
-                print("El precio no puede ser negativo.")
+                print(" El precio no puede ser negativo.")
                 continue
             break
         except ValueError:
-            print("Ingrese un precio válido (número).")
+            print(" Ingrese un número válido para el precio.")
 
     proveedor = input("Proveedor: ")
 
@@ -88,14 +104,15 @@ def registrar_hilo():
     }
 
     inventario.append(hilo)
-    contador_id += 1  # Incrementar ID global
+    contador_id += 1
 
-    print(f"Hilo registrado con éxito. ID asignado: {hilo['id']}")
+    print(f"\n Hilo registrado con éxito. ID asignado: {hilo['id']}")
     actualizar_excel()
 
-# Buscar hilos por marca, código o descripción
+# Buscar hilos
 def buscar_hilo():
-    print("\n--- Buscar hilo ---")
+    limpiar_pantalla()
+    print("=== Buscar Hilo ===")
     criterio = input("Buscar por (marca / código / descripción): ").lower()
     valor = input("Ingrese el valor a buscar: ").lower()
 
@@ -106,32 +123,33 @@ def buscar_hilo():
     elif criterio == "marca":
         campo = "marca"
     else:
-        print("Criterio no válido. Use: marca, código o descripción.")
+        print(" Criterio no válido. Use: marca, código o descripción.")
         return
 
     encontrados = [h for h in inventario if valor in h[campo].lower()]
 
     if encontrados:
+        print(f"\n Resultados encontrados ({len(encontrados)}):\n")
         for h in encontrados:
             print(f"ID: {h['id']} | Marca: {h['marca']} | Código: {h['codigo_color']} | "
                   f"Descripción: {h['descripcion']} | Cantidad: {h['cantidad']} | "
                   f"Precio: Q{h['precio_unitario']} | Proveedor: {h['proveedor']}")
     else:
-        print("No se encontraron coincidencias.")
+        print("\n No se encontraron coincidencias.")
 
-# Modificar información de un hilo existente
+# Modificar hilo
 def modificar_hilo():
-    print("\n--- Modificar información de un hilo ---")
+    limpiar_pantalla()
+    print("=== Modificar Hilo ===")
     codigo = input("Ingrese el código de color del hilo a modificar: ")
 
     for hilo in inventario:
         if hilo["codigo_color"] == codigo:
-            print(f"Hilo encontrado: {hilo['descripcion']}")
-            print("Deje en blanco si no desea cambiar un dato.")
+            print(f"\nHilo encontrado: {hilo['descripcion']}")
+            print("Deje en blanco si no desea cambiar un dato.\n")
             nueva_marca = input(f"Nueva marca ({hilo['marca']}): ") or hilo['marca']
             nueva_desc = input(f"Nueva descripción ({hilo['descripcion']}): ") or hilo['descripcion']
 
-            # Cantidad
             while True:
                 nueva_cantidad = input(f"Nueva cantidad ({hilo['cantidad']}): ")
                 if nueva_cantidad == "":
@@ -140,13 +158,12 @@ def modificar_hilo():
                 try:
                     nueva_cantidad = int(nueva_cantidad)
                     if nueva_cantidad < 0:
-                        print("Cantidad no puede ser negativa.")
+                        print("La cantidad no puede ser negativa.")
                         continue
                     break
                 except ValueError:
-                    print("Ingrese un número válido para cantidad.")
+                    print("Ingrese un número válido.")
 
-            # Precio unitario
             while True:
                 nuevo_precio = input(f"Nuevo precio ({hilo['precio_unitario']}): ")
                 if nuevo_precio == "":
@@ -159,7 +176,7 @@ def modificar_hilo():
                         continue
                     break
                 except ValueError:
-                    print("Ingrese un número válido para el precio.")
+                    print("Ingrese un número válido.")
 
             nuevo_proveedor = input(f"Nuevo proveedor ({hilo['proveedor']}): ") or hilo['proveedor']
 
@@ -169,42 +186,46 @@ def modificar_hilo():
             hilo['precio_unitario'] = nuevo_precio
             hilo['proveedor'] = nuevo_proveedor
 
-            print("Información actualizada con éxito.")
+            print("\n Información actualizada con éxito.")
             actualizar_excel()
             return
-    print("No se encontró un hilo con ese código.")
+    print(" No se encontró un hilo con ese código.")
 
-# Eliminar hilo si no hay unidades disponibles
+# Eliminar hilo
 def eliminar_hilo():
-    print("\n--- Eliminar hilo ---")
+    limpiar_pantalla()
+    print("=== Eliminar Hilo ===")
     codigo = input("Ingrese el código de color del hilo a eliminar: ")
 
     for hilo in inventario:
         if hilo["codigo_color"] == codigo:
             if hilo["cantidad"] == 0:
                 inventario.remove(hilo)
-                print("Hilo eliminado del inventario.")
+                print("\n Hilo eliminado del inventario.")
                 actualizar_excel()
             else:
-                print("No se puede eliminar. Aún hay unidades disponibles.")
+                print("\n No se puede eliminar. Aún hay unidades disponibles.")
             return
-    print("No se encontró un hilo con ese código.")
+    print(" No se encontró un hilo con ese código.")
 
 # Mostrar inventario completo
 def mostrar_inventario():
-    print("\n--- Inventario de hilos ---")
+    limpiar_pantalla()
+    print("=== Inventario Completo ===\n")
     if not inventario:
-        print("No hay hilos registrados.")
+        print(" No hay hilos registrados.")
     else:
         for h in inventario:
             print(f"ID: {h['id']} | Marca: {h['marca']} | Código: {h['codigo_color']} | "
                   f"Descripción: {h['descripcion']} | Cantidad: {h['cantidad']} | "
                   f"Precio: Q{h['precio_unitario']} | Proveedor: {h['proveedor']}")
+        print(f"\nTotal de hilos registrados: {len(inventario)}")
 
 # Menú principal
 def menu():
+    cargar_inventario()  # Cargar inventario y sincronizar IDs al iniciar
     while True:
-        print("\n---- MENÚ PRINCIPAL ----")
+        print("\n==== MENÚ PRINCIPAL ====")
         print("1. Registrar nuevo hilo")
         print("2. Buscar hilo")
         print("3. Modificar información")
@@ -225,9 +246,9 @@ def menu():
         elif opcion == "5":
             mostrar_inventario()
         elif opcion == "6":
-            print("Adiós.")
+            print("\n Adiós")
             break
         else:
-            print("Opción inválida. Intente de nuevo.")
+            print(" Opción inválida. Intente de nuevo.")
 
 menu()
