@@ -21,3 +21,29 @@ def registrar_hilo():
 
     inventario.append(hilo)
     print("Hilo registrado con éxito.")
+
+    #Buscar hilos por marca, código o descripción
+def buscar_hilo():
+    print("\n--- Buscar hilo ---")
+    criterio = input("Buscar por (marca / código / descripción): ").lower()
+    valor = input("Ingrese el valor a buscar: ").lower()
+
+    if criterio in ["código", "codigo"]:
+        campo = "codigo_color"
+    elif criterio in ["descripcion", "descripción"]:
+        campo = "descripcion"
+    elif criterio == "marca":
+        campo = "marca"
+    else:
+        print("Criterio no válido. Use: marca, código o descripción.")
+        return
+
+    encontrados = [h for h in inventario if valor in h[campo].lower()]
+
+    if encontrados:
+        for h in encontrados:
+            print(f"Marca: {h['marca']} | Código: {h['codigo_color']} | "
+                  f"Descripción: {h['descripcion']} | Cantidad: {h['cantidad']} | "
+                  f"Precio: Q{h['precio_unitario']} | Proveedor: {h['proveedor']}")
+    else:
+        print("No se encontraron coincidencias.")
