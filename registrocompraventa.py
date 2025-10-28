@@ -18,7 +18,7 @@ def registrar_compra():
             })
             print("Compra registrada y cantidad actualizada.")
             return
-    print("⚠️ Hilo no encontrado en el inventario.")
+    print("Hilo no encontrado en el inventario.")
 
 #Reportes y consultas
 def reportes():
@@ -40,7 +40,7 @@ def reportes():
                       f"Descripción: {h['descripcion']} | Cantidad: {h['cantidad']} | "
                       f"Precio: Q{h['precio_unitario']}")
         else:
-            print("⚠️ No se encontraron hilos con esa marca.")
+            print("No se encontraron hilos con esa marca.")
     elif opcion == "3":
         print("\n--- Historial de Ventas ---")
         if not historial_ventas:
