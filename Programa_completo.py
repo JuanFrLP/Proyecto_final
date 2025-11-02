@@ -339,19 +339,30 @@ class InventarioHilos:
     def buscar_hilo(self):
         Utilidades.limpiar_pantalla()
         print("=== Buscar Hilo ===")
-        criterio = input("Buscar por (marca / código / descripción): ").lower().strip()
-        valor = input("Valor a buscar: ").lower().strip()
-        campo = "marca" if criterio == "marca" else "codigo_color" if criterio in ["codigo", "código", "codigo_color"] else "descripcion"
-        encontrados = [h for h in self.inventario if valor in str(h[campo]).lower()]
 
-        if encontrados:
-            print(f"\nResultados encontrados ({len(encontrados)}):\n")
-            for h in encontrados:
+        marca = input("Ingrese la marca (o deje vacío para omitir): ").strip().lower()
+        codigo_color = input("Ingrese el código de color (o deje vacío para omitir): ").strip().lower()
+
+        resultados = self.inventario
+
+    # Filtrar por marca si se indicó
+        if marca:
+            resultados = [h for h in resultados if marca in h["marca"].lower()]
+
+    # Filtrar por código si se indicó
+        if codigo_color:
+            resultados = [h for h in resultados if codigo_color in str(h["codigo_color"]).lower()]
+
+        if resultados:
+            print(f"\nResultados encontrados ({len(resultados)}):\n")
+            for h in resultados:
                 print(f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
-                      f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
-                      f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
+                        f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
+                        f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
         else:
-            print("Nada que coincida con esa búsqueda")
+            print("No se encontraron hilos con los criterios ingresados.")
+
+
 
     def modificar_hilo(self):
         Utilidades.limpiar_pantalla()
@@ -508,9 +519,7 @@ class InventarioHilos:
             print(f"\nTotal de hilos: {len(self.inventario)}")
 
 
-# ==========================
 # SISTEMA (login + menús)
-# ==========================
 class SistemaDeInventario:
     def __init__(self, archivo_excel=NOMBRE_ARCHIVO, permitir_venta_empleado=PERMITIR_VENTA_EMPLEADO):
         self.excel = GestorExcel(archivo_excel)
