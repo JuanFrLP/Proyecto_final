@@ -1,556 +1,618 @@
 from openpyxl import Workbook, load_workbook
 import os
+from datetime import datetime
 
-# VARIABLES GLOBALES
-inventario = []
-historial_ventas = []
-historial_compras = []
-usuarios = []  
-contador_id = 1
-nombre_archivo = "inventario_hilos.xlsx"
-
-# Config de permisos/alertas
+# CONFIGURACIÓN
+NOMBRE_ARCHIVO = "inventario_hilos.xlsx"
 PERMITIR_VENTA_EMPLEADO = True
 STOCK_MINIMO = 6  # alerta cuando quede <= a este valor
 
+# Nombres de hojas en Excel
+HOJA_INVENTARIO = "Inventario_Hilos"
+HOJA_COMPRAS = "Historial_Compras"
+HOJA_VENTAS = "Historial_Ventas"
+HOJA_USUARIOS = "Usuarios"
+HOJA_SESIONES = "Sesiones_Usuarios"
+
 
 # UTILIDADES
-def limpiar_pantalla():
-    os.system('cls' if os.name == 'nt' else 'clear')
+class Utilidades:
+    @staticmethod
+    def limpiar_pantalla():
+        os.system('cls' if os.name == 'nt' else 'clear')
 
-
-def leer_entero(mensaje, minimo=None):
-    while True:
-        val = input(mensaje)
-        try:
-            n = int(val)
-            if minimo is not None and n < minimo:
-                print(f"Debe ser un número entero ≥ {minimo}.")
-                continue
-            return n
-        except ValueError:
-            print("Entrada inválida. Ingrese un número entero.")
-
-
-def leer_flotante(mensaje, minimo=None):
-    while True:
-        val = input(mensaje)
-        try:
-            f = float(val)
-            if minimo is not None and f < minimo:
-                print(f"Debe ser un número ≥ {minimo}.")
-                continue
-            return f
-        except ValueError:
-            print("Entrada inválida. Ingrese un número (puede usar decimales).")
-
-
-# EXCEL: ESTRUCTURA Y CARGA
-def asegurar_estructura_excel_y_usuarios():
-
-    if os.path.exists(nombre_archivo):
-        wb = load_workbook(nombre_archivo)
-    else:
-        wb = Workbook()
-
-    # Inventario
-    if "Inventario de Hilos" not in wb.sheetnames:
-        hoja_inv = wb.active
-        hoja_inv.title = "Inventario de Hilos"
-        hoja_inv.append(["ID", "Marca", "Código de Color", "Descripción",
-                         "Cantidad", "Precio Unitario", "Proveedor"])
-    else:
-        hoja_inv = wb["Inventario de Hilos"]
-        if hoja_inv.max_row == 0:
-            hoja_inv.append(["ID", "Marca", "Código de Color", "Descripción",
-                             "Cantidad", "Precio Unitario", "Proveedor"])
-
-    # Compras
-    if "Historial Compras" not in wb.sheetnames:
-        hoja_comp = wb.create_sheet("Historial Compras")
-        hoja_comp.append(["Código", "Marca", "Descripción", "Cantidad",
-                          "Costo Unitario", "Total"])
-    else:
-        hoja_comp = wb["Historial Compras"]
-        if hoja_comp.max_row == 0:
-            hoja_comp.append(["Código", "Marca", "Descripción", "Cantidad",
-                              "Costo Unitario", "Total"])
-
-    # Ventas
-    if "Historial Ventas" not in wb.sheetnames:
-        hoja_vent = wb.create_sheet("Historial Ventas")
-        hoja_vent.append(["Código", "Marca", "Descripción", "Cantidad", "Total"])
-    else:
-        hoja_vent = wb["Historial Ventas"]
-        if hoja_vent.max_row == 0:
-            hoja_vent.append(["Código", "Marca", "Descripción", "Cantidad", "Total"])
-
-    # Usuarios
-    if "Usuario s" not in wb.sheetnames:
-        hoja_usr = wb.create_sheet("Usuarios")
-        hoja_usr.append(["Usuario", "Contraseña", "Rol"])
-        hoja_usr.append(["admin", "admin123", "admin"])
-        hoja_usr.append(["empleado", "azul321", "user"])
-    else:
-        hoja_usr = wb["Usuarios"]
-        if hoja_usr.max_row < 2:
-            hoja_usr.append(["Usuario", "Contraseña", "Rol"])
-            hoja_usr.append(["admin", "admin123", "admin"])
-            hoja_usr.append(["empleado", "azul321", "user"])
-
-    wb.save(nombre_archivo)
-
-
-def cargar_usuarios():
-    usuarios.clear()
-    if not os.path.exists(nombre_archivo):
-        asegurar_estructura_excel_y_usuarios()
-
-    wb = load_workbook(nombre_archivo)
-    if "Usuarios" not in wb.sheetnames:
-        asegurar_estructura_excel_y_usuarios()
-        wb = load_workbook(nombre_archivo)
-
-    hoja = wb["Usuarios"]
-    for fila in hoja.iter_rows(min_row=2, values_only=True):
-        if fila and fila[0]:
-            usuarios.append({
-                "usuario": str(fila[0]),
-                "password": str(fila[1]) if fila[1] is not None else "",
-                "rol": str(fila[2]).lower() if fila[2] else "user"
-            })
-
-
-def cargar_inventario():
-    global contador_id
-    inventario.clear()
-    historial_ventas.clear()
-    historial_compras.clear()
-
-    if os.path.exists(nombre_archivo):
-        wb = load_workbook(nombre_archivo)
-
-        if "Inventario de Hilos" in wb.sheetnames:
-            hoja = wb["Inventario de Hilos"]
-            for fila in hoja.iter_rows(min_row=2, values_only=True):
-                if fila and fila[0] is not None:
-                    inventario.append({
-                        "id": fila[0],
-                        "marca": fila[1],
-                        "codigo_color": str(fila[2]),
-                        "descripcion": fila[3],
-                        "cantidad": int(fila[4]),
-                        "precio_unitario": float(fila[5]),
-                        "proveedor": fila[6]
-                    })
-
-        if "Historial Compras" in wb.sheetnames:
-            hoja_compras = wb["Historial Compras"]
-            for fila in hoja_compras.iter_rows(min_row=2, values_only=True):
-                if fila and fila[0] is not None:
-                    historial_compras.append({
-                        "codigo_color": str(fila[0]),
-                        "marca": fila[1],
-                        "descripcion": fila[2],
-                        "cantidad": int(fila[3]),
-                        "costo_unitario": float(fila[4]),
-                        "total": float(fila[5])
-                    })
-
-        if "Historial Ventas" in wb.sheetnames:
-            hoja_ventas = wb["Historial Ventas"]
-            for fila in hoja_ventas.iter_rows(min_row=2, values_only=True):
-                if fila and fila[0] is not None:
-                    historial_ventas.append({
-                        "codigo_color": str(fila[0]),
-                        "marca": fila[1],
-                        "descripcion": fila[2],
-                        "cantidad": int(fila[3]),
-                        "total": float(fila[4])
-                    })
-
-        if inventario:
-            contador_id = max(h["id"] for h in inventario) + 1
-        else:
-            contador_id = 1
-
-
-def actualizar_excel():
-    if os.path.exists(nombre_archivo):
-        wb = load_workbook(nombre_archivo)
-    else:
-        wb = Workbook()
-
-    # Inventario
-    if "Inventario de Hilos" in wb.sheetnames:
-        hoja_inv = wb["Inventario de Hilos"]
-        if hoja_inv.max_row > 1:
-            hoja_inv.delete_rows(2, hoja_inv.max_row - 1)
-    else:
-        hoja_inv = wb.active
-        hoja_inv.title = "Inventario de Hilos"
-        hoja_inv.append(["ID", "Marca", "Código de Color", "Descripción",
-                         "Cantidad", "Precio Unitario", "Proveedor"])
-
-    for h in inventario:
-        hoja_inv.append([h["id"], h["marca"], h["codigo_color"], h["descripcion"],
-                         h["cantidad"], h["precio_unitario"], h["proveedor"]])
-
-    # Compras
-    if "Historial Compras" in wb.sheetnames:
-        hoja_comp = wb["Historial Compras"]
-        if hoja_comp.max_row > 1:
-            hoja_comp.delete_rows(2, hoja_comp.max_row - 1)
-    else:
-        hoja_comp = wb.create_sheet("Historial Compras")
-        hoja_comp.append(["Código", "Marca", "Descripción", "Cantidad",
-                          "Costo Unitario", "Total"])
-
-    for c in historial_compras:
-        hoja_comp.append([c["codigo_color"], c["marca"], c["descripcion"],
-                          c["cantidad"], c["costo_unitario"], c["total"]])
-
-    # Ventas
-    if "Historial Ventas" in wb.sheetnames:
-        hoja_vent = wb["Historial Ventas"]
-        if hoja_vent.max_row > 1:
-            hoja_vent.delete_rows(2, hoja_vent.max_row - 1)
-    else:
-        hoja_vent = wb.create_sheet("Historial Ventas")
-        hoja_vent.append(["Código", "Marca", "Descripción", "Cantidad", "Total"])
-
-    for v in historial_ventas:
-        hoja_vent.append([v["codigo_color"], v["marca"], v["descripcion"],
-                          v["cantidad"], v["total"]])
-
-    try:
-        wb.save(nombre_archivo)
-        print("\nArchivo Excel actualizado correctamente.\n")
-    except PermissionError:
-        print("\nCierra el archivo Excel antes de guardar.\n")
-
-
-# LOGIN
-def login():
-    print("=== INICIO DE SESIÓN ===")
-    while True:
-        usr = input("Usuario: ").strip()
-        pwd = input("Contraseña: ").strip()
-        for u in usuarios:
-            if u["usuario"] == usr and u["password"] == pwd:
-                print(f"\nBienvenido, {usr}. Rol: {u['rol']}\n")
-                return u["rol"], usr
-        print("Credenciales inválidas. Inténtelo de nuevo.\n")
-
-# ALERTA DE STOCK BAJO
-def verificar_alerta_stock(hilo):
-    if hilo["cantidad"] <= STOCK_MINIMO:
-        print("\n ---- ALERTA DE STOCK ----- ")
-        print(f"Código: {hilo['codigo_color']}")
-        print(f"Descripción: {hilo['descripcion']}")
-        print(f"Unidades disponibles: {hilo['cantidad']}\n")
-
-
-def registrar_hilo():
-    global contador_id
-    limpiar_pantalla()
-    print("=== Registrar Nuevo Hilo ===")
-    marca = input("Marca: ").strip()
-
-    while True:
-        codigo_color = input("Código de color (solo números): ").strip()
-        if not codigo_color.isdigit():
-            print("Error: el código de color debe ser numérico.")
-            continue
-        if any(h["codigo_color"] == codigo_color for h in inventario):
-            print("Error: este código de color ya está registrado.")
-            continue
-        break
-
-    descripcion = input("Descripción: ").strip()
-    cantidad = leer_entero("Cantidad: ", minimo=0)
-    precio_unitario = leer_flotante("Precio unitario: ", minimo=0.0)
-    proveedor = input("Proveedor: ").strip()
-
-    hilo = {
-        "id": contador_id,
-        "marca": marca,
-        "codigo_color": codigo_color,
-        "descripcion": descripcion,
-        "cantidad": cantidad,
-        "precio_unitario": precio_unitario,
-        "proveedor": proveedor
-    }
-    inventario.append(hilo)
-    contador_id += 1
-
-    print(f"\nHilo registrado con éxito. ID: {hilo['id']}")
-    actualizar_excel()
-
-
-def buscar_hilo():
-    limpiar_pantalla()
-    print("=== Buscar Hilo ===")
-    criterio = input("Buscar por (marca / código / descripción): ").lower().strip()
-    valor = input("Ingrese el valor a buscar: ").lower().strip()
-
-    campo = "marca" if criterio == "marca" else "codigo_color" if criterio in ["codigo", "código"] else "descripcion"
-    encontrados = [h for h in inventario if valor in str(h[campo]).lower()]
-
-    if encontrados:
-        print(f"\nResultados encontrados ({len(encontrados)}):\n")
-        for h in encontrados:
-            print(f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
-                  f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
-                  f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
-    else:
-        print("No se encontraron coincidencias.")
-
-
-def modificar_hilo():
-    limpiar_pantalla()
-    codigo = input("Ingrese el código de color del hilo a modificar: ").strip()
-
-    for h in inventario:
-        if h["codigo_color"] == codigo:
-            print(f"Hilo encontrado: {h['descripcion']}")
-            nueva_marca = input(f"Nueva marca ({h['marca']}): ").strip()
-            if nueva_marca:
-                h["marca"] = nueva_marca
-
-            nueva_desc = input(f"Nueva descripción ({h['descripcion']}): ").strip()
-            if nueva_desc:
-                h["descripcion"] = nueva_desc
-
+    @staticmethod
+    def leer_entero(mensaje, minimo=None):
+        while True:
+            val = input(mensaje)
             try:
-                nueva_cantidad = input(f"Nueva cantidad ({h['cantidad']}): ").strip()
-                if nueva_cantidad:
-                    h["cantidad"] = int(nueva_cantidad)
-                    verificar_alerta_stock(h)  # ALERTA SOLO SI SE CAMBIA CANTIDAD
-                nuevo_precio = input(f"Nuevo precio ({h['precio_unitario']}): ").strip()
-                if nuevo_precio:
-                    h["precio_unitario"] = float(nuevo_precio)
+                n = int(val)
+                if minimo is not None and n < minimo:
+                    print(f"Debe ser un número entero ≥ {minimo}.")
+                    continue
+                return n
             except ValueError:
-                print("Entrada inválida. Se mantienen los valores actuales.")
+                print("Error, intente con un número entero")
 
-            nuevo_prov = input(f"Nuevo proveedor ({h['proveedor']}): ").strip()
-            if nuevo_prov:
-                h["proveedor"] = nuevo_prov
+    @staticmethod
+    def leer_flotante(mensaje, minimo=None):
+        while True:
+            val = input(mensaje)
+            try:
+                f = float(val)
+                if minimo is not None and f < minimo:
+                    print(f"Debe ser un número ≥ {minimo}.")
+                    continue
+                return f
+            except ValueError:
+                print("Error, intente con un número ")
 
-            print("Información actualizada correctamente.")
-            actualizar_excel()
-            return
-    print("Hilo no encontrado.")
 
+# MANEJO DE EXCEL
+class GestorExcel:
+    def __init__(self, archivo):
+        self.nombre_archivo = archivo
 
-def eliminar_hilo():
-    codigo = input("Ingrese el código de color del hilo a eliminar: ").strip()
-    for h in inventario:
-        if h["codigo_color"] == codigo:
-            if h["cantidad"] == 0:
-                inventario.remove(h)
-                print("Hilo eliminado.")
-                actualizar_excel()
+    def asegurar_estructura(self):
+        if os.path.exists(self.nombre_archivo):
+            wb = load_workbook(self.nombre_archivo)
+        else:
+            wb = Workbook()
+
+        # Si el libro viene vacío, usa la hoja activa como Inventario
+        if HOJA_INVENTARIO not in wb.sheetnames:
+            hoja_inv = wb.active
+            hoja_inv.title = HOJA_INVENTARIO
+            hoja_inv.append(["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"])
+
+        # Crear/asegurar el resto de hojas
+        definiciones = {
+            HOJA_COMPRAS: ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"],
+            HOJA_VENTAS: ["Código", "Marca", "Descripción", "Cantidad", "Total"],
+            HOJA_USUARIOS: ["Usuario", "Contraseña", "Rol"],
+            HOJA_SESIONES: ["ID Sesión", "Usuario", "Rol", "Fecha y Hora de Inicio", "Fecha y Hora de Cierre"]
+        }
+
+        for hoja, encabezados in definiciones.items():
+            if hoja not in wb.sheetnames:
+                nueva = wb.create_sheet(hoja)
+                nueva.append(encabezados)
+                if hoja == HOJA_USUARIOS:
+                    # usuarios por defecto
+                    nueva.append(["admin", "admin123", "admin"])
+                    nueva.append(["empleado", "azul321", "user"])
             else:
-                print("No se puede eliminar. Aún hay unidades disponibles.")
+                obj = wb[hoja]
+                if obj.max_row == 0:
+                    obj.append(encabezados)
+
+        wb.save(self.nombre_archivo)
+
+    def cargar_hoja(self, nombre_hoja):
+        if not os.path.exists(self.nombre_archivo):
+            self.asegurar_estructura()
+        wb = load_workbook(self.nombre_archivo)
+        if nombre_hoja not in wb.sheetnames:
+            return []
+        hoja = wb[nombre_hoja]
+        return [fila for fila in hoja.iter_rows(min_row=2, values_only=True) if fila and fila[0] is not None]
+
+    def guardar_hoja(self, nombre_hoja, encabezados, datos):
+        if os.path.exists(self.nombre_archivo):
+            wb = load_workbook(self.nombre_archivo)
+        else:
+            wb = Workbook()
+        if nombre_hoja not in wb.sheetnames:
+            hoja = wb.create_sheet(nombre_hoja)
+            hoja.append(encabezados)
+        else:
+            hoja = wb[nombre_hoja]
+            if hoja.max_row > 1:
+                hoja.delete_rows(2, hoja.max_row - 1)
+        for fila in datos:
+            hoja.append(fila)
+        wb.save(self.nombre_archivo)
+
+    def reparar_estructura(self):
+        if not os.path.exists(self.nombre_archivo):
+            print("No hay archivo Excel para reparar.")
             return
-    print("Hilo no encontrado.")
 
+        wb = load_workbook(self.nombre_archivo)
 
-# COMPRAS Y VENTAS
-def registrar_compra():
-    print("\n--- Registrar compra/reabastecimiento ---")
-    codigo = input("Código de color del hilo: ").strip()
-    cantidad = leer_entero("Cantidad comprada: ", minimo=1)
-    costo_unitario = leer_flotante("Costo por unidad: ", minimo=0.0)
+        hojas_principales = [HOJA_INVENTARIO, HOJA_COMPRAS, HOJA_VENTAS]
+        encabezados_validos = {
+            HOJA_INVENTARIO: ["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"],
+            HOJA_COMPRAS: ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"],
+            HOJA_VENTAS: ["Código", "Marca", "Descripción", "Cantidad", "Total"]
+        }
 
-    for h in inventario:
-        if h["codigo_color"] == codigo:
-            h["cantidad"] += cantidad
-            verificar_alerta_stock(h)  # ALERTA SI SIGUE BAJO LUEGO DE COMPRA
-            historial_compras.append({
-                "codigo_color": codigo,
-                "marca": h["marca"],
-                "descripcion": h["descripcion"],
-                "cantidad": cantidad,
-                "costo_unitario": costo_unitario,
-                "total": round(cantidad * costo_unitario, 2)
+        for hoja_nombre in hojas_principales:
+            if hoja_nombre not in wb.sheetnames:
+                continue
+
+            hoja = wb[hoja_nombre]
+            # Detectar encabezados incorrectos en filas posteriores
+            filas_erroneas = []
+            for i, fila in enumerate(hoja.iter_rows(values_only=True), start=1):
+                if fila and any(isinstance(v, str) and v.strip() in encabezados_validos[hoja_nombre] for v in fila):
+                    if i != 1:  # Si no es la primera fila (encabezado correcto)
+                        filas_erroneas.append(i)
+
+            # Borrar filas con encabezados repetidos
+            if filas_erroneas:
+                print(f"Corrigiendo encabezados duplicados en '{hoja_nombre}'...")
+                # Elimina todas las filas excepto la primera
+                hoja.delete_rows(2, hoja.max_row - 1)
+
+        wb.save(self.nombre_archivo)
+        print("Archivo Excel reparado correctamente.\n")
+
+# SESIONES
+class SesionUsuario:
+    def __init__(self, gestor_excel: GestorExcel):
+        self.excel = gestor_excel
+
+    def abrir_sesion(self, usuario, rol):
+        wb = load_workbook(self.excel.nombre_archivo)
+        if HOJA_SESIONES not in wb.sheetnames:
+            hoja = wb.create_sheet(HOJA_SESIONES)
+            hoja.append(["ID Sesión", "Usuario", "Rol", "Fecha y Hora de Inicio", "Fecha y Hora de Cierre"])
+        hoja = wb[HOJA_SESIONES]
+        id_sesion = hoja.max_row  # correlativo (la fila 1 es encabezado)
+        inicio = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        hoja.append([id_sesion, usuario, rol, inicio, ""])
+        wb.save(self.excel.nombre_archivo)
+        return id_sesion
+
+    def cerrar_sesion(self, id_sesion):
+        wb = load_workbook(self.excel.nombre_archivo)
+        if HOJA_SESIONES not in wb.sheetnames:
+            return
+        hoja = wb[HOJA_SESIONES]
+        cierre = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for fila in hoja.iter_rows(min_row=2):
+            if fila[0].value == id_sesion:
+                hoja.cell(row=fila[0].row, column=5, value=cierre)
+                break
+        wb.save(self.excel.nombre_archivo)
+
+# INVENTARIO / COMPRAS / VENTAS / REPORTES
+class InventarioHilos:
+    def __init__(self, gestor_excel: GestorExcel, stock_minimo=STOCK_MINIMO):
+        self.excel = gestor_excel
+        self.stock_minimo = stock_minimo
+        self.inventario = []
+        self.historial_ventas = []
+        self.historial_compras = []
+        self.contador_id = 1
+        self.cargar_todo()
+
+    # ---- Persistencia ----
+    def cargar_todo(self):
+        self.inventario.clear()
+        self.historial_ventas.clear()
+        self.historial_compras.clear()
+
+        # --- Inventario ---
+        for fila in self.excel.cargar_hoja(HOJA_INVENTARIO):
+            try:
+                id_val = int(fila[0])
+            except (ValueError, TypeError):
+                # Si la fila tiene texto (encabezados) o viene corrupta, la saltamos
+                continue
+            try:
+                cantidad_val = int(fila[4])
+            except (ValueError, TypeError):
+                cantidad_val = 0
+            try:
+                precio_val = float(fila[5])
+            except (ValueError, TypeError):
+                precio_val = 0.0
+
+            self.inventario.append({
+                "id": id_val,
+                "marca": fila[1],
+                "codigo_color": str(fila[2]),
+                "descripcion": fila[3],
+                "cantidad": cantidad_val,
+                "precio_unitario": precio_val,
+                "proveedor": fila[6]
             })
-            print("Compra registrada y cantidad actualizada.")
-            actualizar_excel()
-            return
-    print("Hilo no encontrado.")
 
-
-def registrar_venta():
-    print("\n--- Registrar venta ---")
-    codigo = input("Código de color del hilo: ").strip()
-
-    for h in inventario:
-        if h["codigo_color"] == codigo:
-            print(f"Cantidad disponible: {h['cantidad']} unidades")
-            cantidad = leer_entero("Cantidad vendida: ", minimo=1)
-            if cantidad > h["cantidad"]:
-                print("No hay suficiente stock disponible.")
-                return
-
-            # Actualizar inventario
-            h["cantidad"] -= cantidad
-            verificar_alerta_stock(h)  # ALERTA DESPUES DE VENTA
-
-            # Registrar en historial
-            total = round(cantidad * h["precio_unitario"], 2)
-            historial_ventas.append({
-                "codigo_color": codigo,
-                "marca": h["marca"],
-                "descripcion": h["descripcion"],
-                "cantidad": cantidad,
+        # --- Historial de Compras ---
+        for f in self.excel.cargar_hoja(HOJA_COMPRAS):
+            try:
+                cant = int(f[3])
+                costo = float(f[4])
+                total = float(f[5])
+            except (ValueError, TypeError):
+                continue
+            self.historial_compras.append({
+                "codigo_color": str(f[0]),
+                "marca": f[1],
+                "descripcion": f[2],
+                "cantidad": cant,
+                "costo_unitario": costo,
                 "total": total
             })
 
-            print(f"Venta registrada. Total: Q{total:.2f}")
-            actualizar_excel()
-            return
+        # --- Historial de Ventas ---
+        for f in self.excel.cargar_hoja(HOJA_VENTAS):
+            try:
+                cant = int(f[3])
+                total = float(f[4])
+            except (ValueError, TypeError):
+                continue
+            self.historial_ventas.append({
+                "codigo_color": str(f[0]),
+                "marca": f[1],
+                "descripcion": f[2],
+                "cantidad": cant,
+                "total": total
+            })
 
-    print("Hilo no encontrado.")
+        self.contador_id = (max((h["id"] for h in self.inventario), default=0) + 1)
 
-# REPORTES / CONSULTAS
-def reportes():
-    print("\n--- Reportes y Consultas ---")
-    print("1. Reporte general de inventario")
-    print("2. Reporte por marca")
-    print("3. Historial de ventas")
-    print("4. Historial de compras")
-    opcion = input("Seleccione una opción: ").strip()
+    def guardar_todo(self):
+        datos_inv = [
+            [h["id"], h["marca"], h["codigo_color"], h["descripcion"], h["cantidad"], h["precio_unitario"], h["proveedor"]]
+            for h in self.inventario
+        ]
+        datos_comp = [
+            [c["codigo_color"], c["marca"], c["descripcion"], c["cantidad"], c["costo_unitario"], c["total"]]
+            for c in self.historial_compras
+        ]
+        datos_vent = [
+            [v["codigo_color"], v["marca"], v["descripcion"], v["cantidad"], v["total"]]
+            for v in self.historial_ventas
+        ]
 
-    if opcion == "1":
-        mostrar_inventario()
-    elif opcion == "2":
-        marca = input("Ingrese la marca a consultar: ").lower().strip()
-        encontrados = [h for h in inventario if marca in h["marca"].lower()]
+        self.excel.guardar_hoja(
+            HOJA_INVENTARIO,
+            ["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"],
+            datos_inv
+        )
+        self.excel.guardar_hoja(
+            HOJA_COMPRAS,
+            ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"],
+            datos_comp
+        )
+        self.excel.guardar_hoja(
+            HOJA_VENTAS,
+            ["Código", "Marca", "Descripción", "Cantidad", "Total"],
+            datos_vent
+        )
+        print("\nListo, el archivo se actualizó.\n")
+
+    # ---- Alertas ----
+    def avisar_stock_bajo(self, hilo):
+        if hilo["cantidad"] <= self.stock_minimo:
+            print("\n ---STOCK BAJO--- ")
+            print(f"Código: {hilo['codigo_color']}")
+            print(f"Descripción: {hilo['descripcion']}")
+            print(f"Unidades disponibles: {hilo['cantidad']}\n")
+
+    # ---- CRUD de Hilos ----
+    def registrar_hilo(self):
+        while True:
+            Utilidades.limpiar_pantalla()
+            print("=== Registrar Nuevo Hilo ===")
+            marca = input("Marca (o 'salir' para volver): ").strip()
+            if marca.lower() == "salir":
+                print("\nRegresando al menú...")
+                break
+
+            while True:
+                codigo_color = input("Código de color (solo números): ").strip()
+                if codigo_color.lower() == "salir":
+                    print("\nRegresando al menú...")
+                    return
+                if not codigo_color.isdigit():
+                    print("El código debe ser numérico.")
+                    continue
+                if any(h["codigo_color"] == codigo_color for h in self.inventario):
+                    print("Ese código ya existe.")
+                    continue
+                break
+
+            descripcion = input("Descripción: ").strip()
+            cantidad = Utilidades.leer_entero("Cantidad: ", minimo=0)
+            precio_unitario = Utilidades.leer_flotante("Precio unitario: ", minimo=0.0)
+            proveedor = input("Proveedor: ").strip()
+
+            hilo = {
+                "id": self.contador_id,
+                "marca": marca,
+                "codigo_color": codigo_color,
+                "descripcion": descripcion,
+                "cantidad": cantidad,
+                "precio_unitario": precio_unitario,
+                "proveedor": proveedor
+            }
+            self.inventario.append(hilo)
+            self.contador_id += 1
+
+            print(f"\nHilo guardado. ID: {hilo['id']}")
+            self.guardar_todo()
+
+    def buscar_hilo(self):
+        Utilidades.limpiar_pantalla()
+        print("=== Buscar Hilo ===")
+        criterio = input("Buscar por (marca / código / descripción): ").lower().strip()
+        valor = input("Valor a buscar: ").lower().strip()
+        campo = "marca" if criterio == "marca" else "codigo_color" if criterio in ["codigo", "código", "codigo_color"] else "descripcion"
+        encontrados = [h for h in self.inventario if valor in str(h[campo]).lower()]
+
         if encontrados:
+            print(f"\nResultados encontrados ({len(encontrados)}):\n")
             for h in encontrados:
-                print(f"Marca:{h['marca']} | Código:{h['codigo_color']} | Descripción:{h['descripcion']} | "
-                      f"Cantidad:{h['cantidad']} | Precio:Q{h['precio_unitario']}")
+                print(f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
+                      f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
+                      f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
         else:
-            print("No se encontraron hilos con esa marca.")
-    elif opcion == "3":
-        print("\n--- Historial de Ventas ---")
-        if not historial_ventas:
-            print("No hay ventas registradas.")
-        else:
-            for v in historial_ventas:
-                print(f"Marca:{v['marca']} | Código:{v['codigo_color']} | Descripción:{v['descripcion']} | "
-                      f"Cantidad:{v['cantidad']} | Total:Q{v['total']:.2f}")
-    elif opcion == "4":
-        print("\n--- Historial de Compras ---")
-        if not historial_compras:
-            print("No hay compras registradas.")
-        else:
-            for c in historial_compras:
-                print(f"Marca:{c['marca']} | Código:{c['codigo_color']} | Descripción:{c['descripcion']} | "
-                      f"Cantidad:{c['cantidad']} | Costo Unitario:Q{c['costo_unitario']:.2f} | "
-                      f"Total:Q{c['total']:.2f}")
-    else:
-        print("Opción no válida.")
+            print("Nada que coincida con esa búsqueda")
 
+    def modificar_hilo(self):
+        Utilidades.limpiar_pantalla()
+        codigo = input("Código de color del hilo a modificar: ").strip()
 
-def mostrar_inventario():
-    limpiar_pantalla()
-    print("=== Inventario Completo ===\n")
-    if not inventario:
-        print(" No hay hilos registrados.")
-    else:
-        print(f"{'ID':<4} {'Marca':<15} {'Código':<10} {'Descripción':<20} {'Cant.':<7} {'Precio(Q)':<10} {'Proveedor'}")
-        print("-" * 80)
-        for h in inventario:
-            print(f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<20} "
-                  f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}")
-        print(f"\nTotal de hilos registrados: {len(inventario)}")
+        for h in self.inventario:
+            if h["codigo_color"] == codigo:
+                print(f"Hilo: {h['descripcion']}")
+                nueva_marca = input(f"Nueva marca ({h['marca']}): ").strip() or h["marca"]
+                nueva_desc = input(f"Nueva descripción ({h['descripcion']}): ").strip() or h["descripcion"]
 
+                try:
+                    nueva_cantidad = input(f"Nueva cantidad ({h['cantidad']}): ").strip()
+                    if nueva_cantidad:
+                        h["cantidad"] = int(nueva_cantidad)
+                        self.avisar_stock_bajo(h)
+                    nuevo_precio = input(f"Nuevo precio ({h['precio_unitario']}): ").strip()
+                    if nuevo_precio:
+                        h["precio_unitario"] = float(nuevo_precio)
+                except ValueError:
+                    print("Dato inválido, se mantiene lo anterior.")
 
-# MENÚS POR ROL
-def menu_admin():
-    while True:
-        print("\n==== MENÚ ADMINISTRADOR ====")
-        print("1. Registrar nuevo hilo")
-        print("2. Buscar hilo")
-        print("3. Modificar información")
-        print("4. Eliminar hilo")
-        print("5. Registrar compra/reabastecimiento")
-        print("6. Registrar venta")
-        print("7. Reportes y consultas")
-        print("8. Mostrar inventario completo")
-        print("9. Salir")
+                nuevo_prov = input(f"Nuevo proveedor ({h['proveedor']}): ").strip() or h["proveedor"]
+                h.update({"marca": nueva_marca, "descripcion": nueva_desc, "proveedor": nuevo_prov})
+                print("Listo, cambios guardados.")
+                self.guardar_todo()
+                return
+        print("Código no encontrado")
 
-        opcion = input("Seleccione una opción: ").strip()
+    def eliminar_hilo(self):
+        codigo = input("Código de color del hilo a eliminar: ").strip()
+        for h in self.inventario:
+            if h["codigo_color"] == codigo:
+                if h["cantidad"] == 0:
+                    self.inventario.remove(h)
+                    print("Hilo eliminado.")
+                    self.guardar_todo()
+                else:
+                    print("No se puede eliminar: todavía hay unidades.")
+                return
+        print("Código no encontrado")
+
+    # ---- Compras y Ventas ----
+    def registrar_compra(self):
+        while True:
+            print("\n--- Registrar compra/reabastecimiento ---")
+            codigo = input("Código de color (o 'salir'): ").strip()
+            if codigo.lower() == "salir":
+                print("\nRegresando al menú...")
+                break
+            cantidad = Utilidades.leer_entero("Cantidad comprada: ", minimo=1)
+            costo_unitario = Utilidades.leer_flotante("Costo por unidad: ", minimo=0.0)
+
+            for h in self.inventario:
+                if h["codigo_color"] == codigo:
+                    h["cantidad"] += cantidad
+                    self.avisar_stock_bajo(h)
+                    self.historial_compras.append({
+                        "codigo_color": codigo,
+                        "marca": h["marca"],
+                        "descripcion": h["descripcion"],
+                        "cantidad": cantidad,
+                        "costo_unitario": costo_unitario,
+                        "total": round(cantidad * costo_unitario, 2)
+                    })
+                    print("Compra guardada y stock actualizado.")
+                    self.guardar_todo()
+                    break
+            else:
+                print("Código no encontrado")
+
+    def registrar_venta(self):
+        while True:
+            print("\n--- Registrar venta ---")
+            codigo = input("Código de color (o 'salir'): ").strip()
+            if codigo.lower() == "salir":
+                print("\nRegresando al menú...")
+                break
+
+            for h in self.inventario:
+                if h["codigo_color"] == codigo:
+                    print(f"Disponible: {h['cantidad']} unidades")
+                    cantidad = Utilidades.leer_entero("Cantidad vendida: ", minimo=1)
+                    if cantidad > h["cantidad"]:
+                        print("No te alcanza el stock para esa venta.")
+                        break
+
+                    h["cantidad"] -= cantidad
+                    self.avisar_stock_bajo(h)
+
+                    total = round(cantidad * h["precio_unitario"], 2)
+                    self.historial_ventas.append({
+                        "codigo_color": codigo,
+                        "marca": h["marca"],
+                        "descripcion": h["descripcion"],
+                        "cantidad": cantidad,
+                        "total": total
+                    })
+
+                    print(f"Venta guardada. Total: Q{total:.2f}")
+                    self.guardar_todo()
+                    break
+            else:
+                print("Código no encontrado")
+
+    # ---- Reportes ----
+    def reportes(self):
+        print("\n--- Reportes y Consultas ---")
+        print("1. Reporte general de inventario")
+        print("2. Reporte por marca")
+        print("3. Historial de ventas")
+        print("4. Historial de compras")
+        opcion = input("Elegí una opción: ").strip()
 
         if opcion == "1":
-            registrar_hilo()
+            self.mostrar_inventario()
         elif opcion == "2":
-            buscar_hilo()
+            marca = input("Marca a consultar: ").lower().strip()
+            encontrados = [h for h in self.inventario if marca in h["marca"].lower()]
+            if encontrados:
+                for h in encontrados:
+                    print(f"Marca:{h['marca']} | Código:{h['codigo_color']} | Desc:{h['descripcion']} | "
+                          f"Cantidad:{h['cantidad']} | Precio:Q{h['precio_unitario']}")
+            else:
+                print("No hay hilos de esa marca.")
         elif opcion == "3":
-            modificar_hilo()
+            print("\n--- Historial de Ventas ---")
+            if not self.historial_ventas:
+                print("Aún no hay ventas.")
+            else:
+                for v in self.historial_ventas:
+                    print(f"{v['marca']} | {v['codigo_color']} | {v['descripcion']} | {v['cantidad']} | Q{v['total']:.2f}")
         elif opcion == "4":
-            eliminar_hilo()
-        elif opcion == "5":
-            registrar_compra()
-        elif opcion == "6":
-            registrar_venta()
-        elif opcion == "7":
-            reportes()
-        elif opcion == "8":
-            mostrar_inventario()
-        elif opcion == "9":
-            print("\nAdiós.")
-            break
+            print("\n--- Historial de Compras ---")
+            if not self.historial_compras:
+                print("Aún no hay compras.")
+            else:
+                for c in self.historial_compras:
+                    print(f"{c['marca']} | {c['codigo_color']} | {c['descripcion']} | {c['cantidad']} | Q{c['total']:.2f}")
         else:
-            print("Opción inválida. Intente de nuevo.")
+            print("Opción no válida.")
 
-
-def menu_user():
-    while True:
-        print("\n==== MENÚ EMPLEADO ====")
-        print("1. Buscar hilo")
-        print("2. Registrar venta")
-        print("3. Reportes y consultas")
-        print("4. Mostrar inventario completo")
-        print("5. Salir")
-
-        opcion = input("Seleccione una opción: ").strip()
-
-        if opcion == "1":
-            buscar_hilo()
-        elif opcion == "2" and PERMITIR_VENTA_EMPLEADO:
-            registrar_venta()
-        elif opcion == "3":
-            reportes()
-        elif opcion == "4":
-            mostrar_inventario()
-        elif opcion == "5":
-            print("\nAdiós.")
-            break
+    def mostrar_inventario(self):
+        Utilidades.limpiar_pantalla()
+        print("=== Inventario Completo ===\n")
+        if not self.inventario:
+            print("No hay hilos registrados.")
         else:
-            print("Opción inválida. Intente de nuevo.")
+            print(f"{'ID':<4} {'Marca':<15} {'Código':<10} {'Descripción':<20} {'Cant.':<7} {'Precio(Q)':<10} {'Proveedor'}")
+            print("-" * 80)
+            for h in self.inventario:
+                print(f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<20} "
+                      f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}")
+            print(f"\nTotal de hilos: {len(self.inventario)}")
 
 
-# FUNCIÓN PRINCIPAL
-def menu():
-    # Estructura base y usuarios
-    asegurar_estructura_excel_y_usuarios()
-    cargar_usuarios()
-    cargar_inventario()
+# ==========================
+# SISTEMA (login + menús)
+# ==========================
+class SistemaDeInventario:
+    def __init__(self, archivo_excel=NOMBRE_ARCHIVO, permitir_venta_empleado=PERMITIR_VENTA_EMPLEADO):
+        self.excel = GestorExcel(archivo_excel)
+        self.excel.asegurar_estructura()
+        self.excel.reparar_estructura()
+        self.inventario = InventarioHilos(self.excel, stock_minimo=STOCK_MINIMO)
+        self.sesion = SesionUsuario(self.excel)
+        self.usuarios = self._cargar_usuarios()
+        self.permitir_venta_empleado = permitir_venta_empleado
 
-    # Login obligatorio
-    rol, _ = login()
+    def _cargar_usuarios(self):
+        return [{"usuario": f[0], "password": f[1], "rol": str(f[2]).lower()} for f in self.excel.cargar_hoja(HOJA_USUARIOS)]
 
-    # Redirige según rol
-    if rol == "admin":
-        menu_admin()
-    else:
-        menu_user()
+    def iniciar_sesion(self):
+        print("=== INICIO DE SESIÓN ===")
+        while True:
+            usr = input("Usuario: ").strip()
+            pwd = input("Contraseña: ").strip()
+            for u in self.usuarios:
+                if u["usuario"] == usr and u["password"] == pwd:
+                    print(f"\n¡Bienvenido, {usr}! Rol: {u['rol']}\n")
+                    id_sesion = self.sesion.abrir_sesion(usr, u["rol"])
+                    return u["rol"], id_sesion
+            print("Usuario o contraseña incorrectos\n")
+
+    # ---- Menú Admin (completo) ----
+    def menu_admin(self, id_sesion):
+        while True:
+            print("\n==== MENÚ ADMINISTRADOR ====")
+            print("1. Registrar nuevo hilo")
+            print("2. Buscar hilo")
+            print("3. Modificar información")
+            print("4. Eliminar hilo")
+            print("5. Registrar compra/reabastecimiento")
+            print("6. Registrar venta")
+            print("7. Reportes y consultas")
+            print("8. Mostrar inventario completo")
+            print("9. Salir")
+            opcion = input("Elegí una opción: ").strip()
+
+            if opcion == "1":
+                self.inventario.registrar_hilo()
+            elif opcion == "2":
+                self.inventario.buscar_hilo()
+            elif opcion == "3":
+                self.inventario.modificar_hilo()
+            elif opcion == "4":
+                self.inventario.eliminar_hilo()
+            elif opcion == "5":
+                self.inventario.registrar_compra()
+            elif opcion == "6":
+                self.inventario.registrar_venta()
+            elif opcion == "7":
+                self.inventario.reportes()
+            elif opcion == "8":
+                self.inventario.mostrar_inventario()
+            elif opcion == "9":
+                self.sesion.cerrar_sesion(id_sesion)
+                print("\nsesión cerrada. Nos vemos")
+                break
+            else:
+                print("Esa opción no existe, prueba")
+
+    # ---- Menú Empleado (completo) ----
+    def menu_empleado(self, id_sesion):
+        while True:
+            print("\n==== MENÚ EMPLEADO ====")
+            print("1. Buscar hilo")
+            print("2. Registrar venta")
+            print("3. Reportes y consultas")
+            print("4. Mostrar inventario completo")
+            print("5. Salir")
+            opcion = input("Elegí una opción: ").strip()
+
+            if opcion == "1":
+                self.inventario.buscar_hilo()
+            elif opcion == "2":
+                if self.permitir_venta_empleado:
+                    self.inventario.registrar_venta()
+                else:
+                    print("Por ahora, ventas solo las hace el admin.")
+            elif opcion == "3":
+                self.inventario.reportes()
+            elif opcion == "4":
+                self.inventario.mostrar_inventario()
+            elif opcion == "5":
+                self.sesion.cerrar_sesion(id_sesion)
+                print("\nSesión cerrada. ¡Gracias!")
+                break
+            else:
+                print("Esa opción no existe, probá otra.")
+
+    # ---- Arranque ----
+    def ejecutar(self):
+        rol, id_sesion = self.iniciar_sesion()
+        if rol == "admin":
+            self.menu_admin(id_sesion)
+        else:
+            self.menu_empleado(id_sesion)
 
 
 # MAIN
 if __name__ == "__main__":
-    menu()
+    app = SistemaDeInventario()
+    app.ejecutar()
