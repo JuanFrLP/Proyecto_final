@@ -188,7 +188,6 @@ class InventarioHilos:
         self.contador_id = 1
         self.cargar_todo()
 
-    # ---- Persistencia ----
     def cargar_todo(self):
         self.inventario.clear()
         self.historial_ventas.clear()
@@ -199,7 +198,6 @@ class InventarioHilos:
             try:
                 id_val = int(fila[0])
             except (ValueError, TypeError):
-                # Si la fila tiene texto (encabezados) o viene corrupta, la saltamos
                 continue
             try:
                 cantidad_val = int(fila[4])
@@ -252,7 +250,23 @@ class InventarioHilos:
                 "total": total
             })
 
+        # --- Asignar ID y aplicar ordenamientos automáticos ---
         self.contador_id = (max((h["id"] for h in self.inventario), default=0) + 1)
+
+        if self.inventario:
+            # 1️ Agrupar por marca y ordenar los códigos (Quick Sort)
+            self.inventario = self.ordenar_por_codigo_color(self.inventario)
+
+            # 2️  Ordenar por marcas con menor cantidad total (Selection Sort)
+            self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+
+            # 3️ Ordenar por tipo de hilo (alfabéticamente) (Shell Sort)
+            self.inventario = self.ordenar_por_tipo(self.inventario)
+
+            # Guardado automáticamente el orden resultante en el archivo Excel
+            self.guardar_todo()
+
+
 
     def guardar_todo(self):
         datos_inv = [
@@ -311,10 +325,14 @@ class InventarioHilos:
                 if not codigo_color.isdigit():
                     print("El código debe ser numérico.")
                     continue
-                if any(h["codigo_color"] == codigo_color for h in self.inventario):
-                    print("Ese código ya existe.")
+
+                #Verificar si ya existe el mismo código en la misma marca
+                if any(h["codigo_color"] == codigo_color and h["marca"].lower() == marca.lower() for h in self.inventario):
+                    print("Ese código de color ya existe para esta marca.")
                     continue
+
                 break
+
 
             descripcion = input("Descripción: ").strip()
             cantidad = Utilidades.leer_entero("Cantidad: ", minimo=0)
@@ -335,6 +353,12 @@ class InventarioHilos:
 
             print(f"\nHilo guardado. ID: {hilo['id']}")
             self.guardar_todo()
+             # Reordenar y guardar el inventario actualizado automáticamente
+            self.inventario = self.ordenar_por_codigo_color(self.inventario)
+            self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+            self.inventario = self.ordenar_por_tipo(self.inventario)
+            self.guardar_todo()
+
 
     def buscar_hilo(self):
         Utilidades.limpiar_pantalla()
@@ -429,6 +453,10 @@ class InventarioHilos:
                         "total": round(cantidad * costo_unitario, 2)
                     })
                     print("Compra guardada y stock actualizado.")
+                    # Reordenar inventario automáticamente tras registrar una compra
+                    self.inventario = self.ordenar_por_codigo_color(self.inventario)
+                    self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+                    self.inventario = self.ordenar_por_tipo(self.inventario)
                     self.guardar_todo()
                     break
             else:
@@ -463,6 +491,10 @@ class InventarioHilos:
                     })
 
                     print(f"Venta guardada. Total: Q{total:.2f}")
+                    # Reordenar inventario automáticamente tras registrar una venta
+                    self.inventario = self.ordenar_por_codigo_color(self.inventario)
+                    self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+                    self.inventario = self.ordenar_por_tipo(self.inventario)
                     self.guardar_todo()
                     break
             else:
@@ -517,6 +549,101 @@ class InventarioHilos:
                 print(f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<20} "
                       f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}")
             print(f"\nTotal de hilos: {len(self.inventario)}")
+
+    #  MÉTODOS DE ORDENAMIENTO AUTOMÁTICO DEL INVENTARIO
+    # QUICK SORT
+
+    def ordenar_por_codigo_color(self, inventario):
+        if not inventario:
+            return inventario
+
+        # 1 Agrupar hilos por marca
+        grupos = {}
+        for hilo in inventario:
+            marca = hilo["marca"]
+            grupos.setdefault(marca, []).append(hilo)
+
+        inventario_ordenado = []
+
+        # 2️ Ordenar los códigos de color dentro de cada grupo (Quick Sort)
+        for marca, lista in sorted(grupos.items(), key=lambda x: x[0].lower()):
+            lista_ordenada = self._quick_sort_codigo(lista)
+            inventario_ordenado.extend(lista_ordenada)
+
+        return inventario_ordenado
+
+    # Función auxiliar interna: aplica Quick Sort recursivo dentro de cada marca
+    def _quick_sort_codigo(self, lista):
+        if len(lista) <= 1:
+            return lista
+        pivote = lista[len(lista) // 2]
+        try:
+            p_color = int(pivote["codigo_color"])
+        except ValueError:
+            p_color = 0
+
+        menores, iguales, mayores = [], [], []
+        for x in lista:
+            try:
+                color = int(x["codigo_color"])
+            except ValueError:
+                color = 0
+            if color < p_color:
+                menores.append(x)
+            elif color == p_color:
+                iguales.append(x)
+            else:
+                mayores.append(x)
+
+        return (self._quick_sort_codigo(menores) +
+                iguales +
+                self._quick_sort_codigo(mayores))
+
+    # MÉTODO 2: SELECTION SORT POR MARCA CON MENOR STOCK
+    def ordenar_por_marca_con_menos_stock(self, inventario):
+        # Calcular total de unidades por marca
+        resumen = {}
+        for hilo in inventario:
+            marca = hilo["marca"]
+            cantidad = int(hilo["cantidad"])
+            resumen[marca] = resumen.get(marca, 0) + cantidad
+
+        # Crear lista auxiliar con total_marca
+        lista_aux = [
+            {**h, "total_marca": resumen[h["marca"]]} for h in inventario
+        ]
+
+        # Aplicar Selection Sort según total_marca
+        n = len(lista_aux)
+        for i in range(n):
+            min_idx = i
+            for j in range(i + 1, n):
+                if lista_aux[j]["total_marca"] < lista_aux[min_idx]["total_marca"]:
+                    min_idx = j
+            lista_aux[i], lista_aux[min_idx] = lista_aux[min_idx], lista_aux[i]
+
+        # Eliminar el campo auxiliar antes de devolver la lista
+        for h in lista_aux:
+            del h["total_marca"]
+
+        return lista_aux
+
+    # MÉTODO 3: SHELL SORT POR TIPO DE HILO
+
+    def ordenar_por_tipo(self, inventario):
+        lista_ordenada = inventario[:]
+        n = len(lista_ordenada)
+        gap = n // 2
+        while gap > 0:
+            for i in range(gap, n):
+                temp = lista_ordenada[i]
+                j = i
+                while j >= gap and lista_ordenada[j - gap]["descripcion"].lower() > temp["descripcion"].lower():
+                    lista_ordenada[j] = lista_ordenada[j - gap]
+                    j -= gap
+                lista_ordenada[j] = temp
+            gap //= 2
+        return lista_ordenada
 
 
 # SISTEMA (login + menús)
