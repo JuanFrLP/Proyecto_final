@@ -177,6 +177,56 @@ class SesionUsuario:
                 break
         wb.save(self.excel.nombre_archivo)
 
+# ALGORITMOS DE ORDENAMIENTO
+class Ordenamientos:
+    @staticmethod
+    def _valor_comparable(elem, key):
+        v = elem.get(key)
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
+    @staticmethod
+    def quick_sort(lista, key):
+        # Returns a NEW sorted list (stable-ish for equal keys via iguales)
+        if len(lista) <= 1:
+            return lista[:]
+        pivote = lista[len(lista) // 2]
+        piv_val = Ordenamientos._valor_comparable(pivote, key)
+        menores = [x for x in lista if Ordenamientos._valor_comparable(x, key) < piv_val]
+        iguales = [x for x in lista if Ordenamientos._valor_comparable(x, key) == piv_val]
+        mayores = [x for x in lista if Ordenamientos._valor_comparable(x, key) > piv_val]
+        return Ordenamientos.quick_sort(menores, key) + iguales + Ordenamientos.quick_sort(mayores, key)
+
+    @staticmethod
+    def selection_sort(lista, key):
+        # In-place selection sort
+        n = len(lista)
+        for i in range(n):
+            min_idx = i
+            for j in range(i + 1, n):
+                if Ordenamientos._valor_comparable(lista[j], key) < Ordenamientos._valor_comparable(lista[min_idx], key):
+                    min_idx = j
+            lista[i], lista[min_idx] = lista[min_idx], lista[i]
+        return lista
+
+    @staticmethod
+    def shell_sort(lista, key):
+        # In-place shell sort using gap //= 2
+        n = len(lista)
+        gap = n // 2
+        while gap > 0:
+            for i in range(gap, n):
+                temp = lista[i]
+                j = i
+                while j >= gap and Ordenamientos._valor_comparable(lista[j - gap], key) > Ordenamientos._valor_comparable(temp, key):
+                    lista[j] = lista[j - gap]
+                    j -= gap
+                lista[j] = temp
+            gap //= 2
+        return lista
+
+
 # INVENTARIO / COMPRAS / VENTAS / REPORTES
 class InventarioHilos:
     def __init__(self, gestor_excel: GestorExcel, stock_minimo=STOCK_MINIMO):
@@ -212,12 +262,12 @@ class InventarioHilos:
 
             self.inventario.append({
                 "id": id_val,
-                "marca": fila[1],
-                "codigo_color": str(fila[2]),
-                "descripcion": fila[3],
+                "marca": fila[1] if fila[1] is not None else "",
+                "codigo_color": str(fila[2]) if fila[2] is not None else "",
+                "descripcion": fila[3] if fila[3] is not None else "",
                 "cantidad": cantidad_val,
                 "precio_unitario": precio_val,
-                "proveedor": fila[6]
+                "proveedor": fila[6] if len(fila) > 6 and fila[6] is not None else ""
             })
 
         # --- Historial de Compras ---
@@ -345,11 +395,11 @@ class InventarioHilos:
 
         resultados = self.inventario
 
-    # Filtrar por marca si se indicó
+        # Filtrar por marca si se indicó
         if marca:
             resultados = [h for h in resultados if marca in h["marca"].lower()]
 
-    # Filtrar por código si se indicó
+        # Filtrar por código si se indicó
         if codigo_color:
             resultados = [h for h in resultados if codigo_color in str(h["codigo_color"]).lower()]
 
@@ -357,12 +407,10 @@ class InventarioHilos:
             print(f"\nResultados encontrados ({len(resultados)}):\n")
             for h in resultados:
                 print(f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
-                        f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
-                        f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
+                      f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
+                      f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
         else:
             print("No se encontraron hilos con los criterios ingresados.")
-
-
 
     def modificar_hilo(self):
         Utilidades.limpiar_pantalla()
@@ -512,11 +560,58 @@ class InventarioHilos:
             print("No hay hilos registrados.")
         else:
             print(f"{'ID':<4} {'Marca':<15} {'Código':<10} {'Descripción':<20} {'Cant.':<7} {'Precio(Q)':<10} {'Proveedor'}")
-            print("-" * 80)
+            print("-" * 90)
             for h in self.inventario:
                 print(f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<20} "
                       f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}")
             print(f"\nTotal de hilos: {len(self.inventario)}")
+
+    # ---- ORDENAMIENTO INTEGRADO ----
+    def ordenar_inventario(self):
+        Utilidades.limpiar_pantalla()
+        print("=== ORDENAR INVENTARIO ===")
+        print("Criterios:")
+        print("1. Marca")
+        print("2. Cantidad")
+        print("3. Precio unitario")
+        criterio_op = input("Elegí un criterio (1-3): ").strip()
+
+        if criterio_op == "1":
+            key = "marca"
+        elif criterio_op == "2":
+            key = "cantidad"
+        elif criterio_op == "3":
+            key = "precio_unitario"
+        else:
+            print("Opción inválida.")
+            return
+
+        print("\nMétodos de ordenamiento:")
+        print("1. Quick Sort")
+        print("2. Selection Sort")
+        print("3. Shell Sort")
+        metodo_op = input("Elegí el método (1-3): ").strip()
+
+        if metodo_op == "1":
+            # quick_sort devuelve una nueva lista
+            self.inventario = Ordenamientos.quick_sort(self.inventario, key)
+            metodo = "Quick Sort"
+        elif metodo_op == "2":
+            # selection_sort ordena in-place
+            self.inventario = Ordenamientos.selection_sort(self.inventario, key)
+            metodo = "Selection Sort"
+        elif metodo_op == "3":
+            self.inventario = Ordenamientos.shell_sort(self.inventario, key)
+            metodo = "Shell Sort"
+        else:
+            print("Método no válido.")
+            return
+
+        # Guardar el nuevo orden en el archivo Excel
+        self.guardar_todo()
+
+        print(f"\nInventario ordenado por '{key}' usando {metodo}.\n")
+        self.mostrar_inventario()
 
 
 # SISTEMA (login + menús)
@@ -531,7 +626,15 @@ class SistemaDeInventario:
         self.permitir_venta_empleado = permitir_venta_empleado
 
     def _cargar_usuarios(self):
-        return [{"usuario": f[0], "password": f[1], "rol": str(f[2]).lower()} for f in self.excel.cargar_hoja(HOJA_USUARIOS)]
+        usuarios_raw = self.excel.cargar_hoja(HOJA_USUARIOS)
+        usuarios = []
+        for f in usuarios_raw:
+            # manejar filas incompletas o None
+            usuario = f[0] if len(f) > 0 and f[0] is not None else ""
+            password = f[1] if len(f) > 1 and f[1] is not None else ""
+            rol = f[2] if len(f) > 2 and f[2] is not None else "user"
+            usuarios.append({"usuario": usuario, "password": password, "rol": str(rol).lower()})
+        return usuarios
 
     def iniciar_sesion(self):
         print("=== INICIO DE SESIÓN ===")
@@ -557,7 +660,8 @@ class SistemaDeInventario:
             print("6. Registrar venta")
             print("7. Reportes y consultas")
             print("8. Mostrar inventario completo")
-            print("9. Salir")
+            print("9. Ordenar inventario")
+            print("10. Salir")
             opcion = input("Elegí una opción: ").strip()
 
             if opcion == "1":
@@ -577,8 +681,10 @@ class SistemaDeInventario:
             elif opcion == "8":
                 self.inventario.mostrar_inventario()
             elif opcion == "9":
+                self.inventario.ordenar_inventario()
+            elif opcion == "10":
                 self.sesion.cerrar_sesion(id_sesion)
-                print("\nsesión cerrada. Nos vemos")
+                print("\nSesión cerrada. Nos vemos")
                 break
             else:
                 print("Esa opción no existe, prueba")
@@ -591,7 +697,8 @@ class SistemaDeInventario:
             print("2. Registrar venta")
             print("3. Reportes y consultas")
             print("4. Mostrar inventario completo")
-            print("5. Salir")
+            print("5. Ordenar inventario")
+            print("6. Salir")
             opcion = input("Elegí una opción: ").strip()
 
             if opcion == "1":
@@ -606,6 +713,8 @@ class SistemaDeInventario:
             elif opcion == "4":
                 self.inventario.mostrar_inventario()
             elif opcion == "5":
+                self.inventario.ordenar_inventario()
+            elif opcion == "6":
                 self.sesion.cerrar_sesion(id_sesion)
                 print("\nSesión cerrada. ¡Gracias!")
                 break
