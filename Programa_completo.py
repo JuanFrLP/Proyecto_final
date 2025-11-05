@@ -386,6 +386,67 @@ class InventarioHilos:
         else:
             print("No se encontraron hilos con los criterios ingresados.")
 
+    def busqueda_avanzada(self):
+        Utilidades.limpiar_pantalla()
+        print("=== BÚSQUEDA AVANZADA ===")
+        print("1. Búsqueda lineal por código")
+        print("2. Búsqueda binaria por código (requiere lista ordenada)")
+        print("3. Búsqueda por hashing (tabla de dispersión)")
+        print("4. Volver")
+        op = input("Elegí una opción (1-4): ").strip()
+
+        if op == "4":
+            return
+
+        marca = input("Ingrese la marca del hilo: ").strip().lower()
+        codigo = input("Ingrese el código de color: ").strip().lower()
+
+        # Filtrar solo los hilos de esa marca
+        inventario_filtrado = [h for h in self.inventario if h["marca"].lower() == marca]
+        if not inventario_filtrado:
+            print(f"No se encontraron hilos de la marca '{marca}'.")
+            return
+
+        res = None
+
+        # BÚSQUEDA LINEAL
+        if op == "1":
+            for h in inventario_filtrado:
+                if str(h["codigo_color"]).lower() == codigo:
+                    res = h
+                    break
+
+        # BÚSQUEDA BINARIA
+        elif op == "2":
+            lista_ordenada = sorted(inventario_filtrado, key=lambda x: str(x["codigo_color"]).lower())
+            izq, der = 0, len(lista_ordenada) - 1
+            while izq <= der:
+                mid = (izq + der) // 2
+                if str(lista_ordenada[mid]["codigo_color"]).lower() == codigo:
+                    res = lista_ordenada[mid]
+                    break
+                elif str(lista_ordenada[mid]["codigo_color"]).lower() < codigo:
+                    izq = mid + 1
+                else:
+                    der = mid - 1
+
+        # BÚSQUEDA HASH
+        elif op == "3":
+            tabla = {str(h["codigo_color"]).lower(): h for h in inventario_filtrado}
+            res = tabla.get(codigo)
+
+        else:
+            print("Opción inválida.")
+            return
+
+        # Resultado
+        if res:
+            print("\n--- Hilo encontrado ---")
+            print(f"ID: {res['id']} | Marca: {res['marca']} | Código: {res['codigo_color']} | "
+                f"Descripción: {res['descripcion']} | Cantidad: {res['cantidad']} | "
+                f"Precio: Q{res['precio_unitario']} | Proveedor: {res['proveedor']}")
+        else:
+            print(f"No se encontró el hilo con el código '{codigo}' en la marca '{marca}'.")
 
 
     def modificar_hilo(self):
@@ -684,7 +745,8 @@ class SistemaDeInventario:
             print("6. Registrar venta")
             print("7. Reportes y consultas")
             print("8. Mostrar inventario completo")
-            print("9. Salir")
+            print("9. Búsqueda avanzada")
+            print("10. Salir")
             opcion = input("Elegí una opción: ").strip()
 
             if opcion == "1":
@@ -704,6 +766,8 @@ class SistemaDeInventario:
             elif opcion == "8":
                 self.inventario.mostrar_inventario()
             elif opcion == "9":
+                self.inventario.busqueda_avanzada()
+            elif opcion == "10":
                 self.sesion.cerrar_sesion(id_sesion)
                 print("\nsesión cerrada. Nos vemos")
                 break
@@ -713,26 +777,28 @@ class SistemaDeInventario:
     # ---- Menú Empleado (completo) ----
     def menu_empleado(self, id_sesion):
         while True:
-            print("\n==== MENÚ EMPLEADO ====")
             print("1. Buscar hilo")
-            print("2. Registrar venta")
-            print("3. Reportes y consultas")
-            print("4. Mostrar inventario completo")
-            print("5. Salir")
+            print("2. Búsqueda avanzada")  
+            print("3. Registrar venta")
+            print("4. Reportes y consultas")
+            print("5. Mostrar inventario completo")
+            print("6. Salir")
             opcion = input("Elegí una opción: ").strip()
 
             if opcion == "1":
                 self.inventario.buscar_hilo()
             elif opcion == "2":
+                self.inventario.busqueda_avanzada()
+            elif opcion == "3":
                 if self.permitir_venta_empleado:
                     self.inventario.registrar_venta()
                 else:
                     print("Por ahora, ventas solo las hace el admin.")
-            elif opcion == "3":
-                self.inventario.reportes()
             elif opcion == "4":
-                self.inventario.mostrar_inventario()
+                self.inventario.reportes()
             elif opcion == "5":
+                self.inventario.mostrar_inventario()
+            elif opcion == "6":
                 self.sesion.cerrar_sesion(id_sesion)
                 print("\nSesión cerrada. ¡Gracias!")
                 break
