@@ -227,6 +227,42 @@ class Ordenamientos:
         return lista
 
 
+# BÚSQUEDAS (lineal, binaria, hashing)
+class Busquedas:
+    @staticmethod
+    def lineal(lista, key, valor):
+        for i, x in enumerate(lista):
+            try:
+                if str(x.get(key)).lower() == str(valor).lower():
+                    return i, x
+            except Exception:
+                continue
+        return -1, None
+
+    @staticmethod
+    def binaria(lista, key, valor):
+        # La lista debe estar ordenada por 'key' previamente
+        izq, der = 0, len(lista) - 1
+        v = str(valor).lower()
+        while izq <= der:
+            mid = (izq + der) // 2
+            try:
+                elem = str(lista[mid].get(key)).lower()
+            except Exception:
+                return -1, None
+            if elem == v:
+                return mid, lista[mid]
+            elif elem < v:
+                izq = mid + 1
+            else:
+                der = mid - 1
+        return -1, None
+
+    @staticmethod
+    def hash_busqueda(dic, valor):
+        return dic.get(str(valor).lower(), None)
+
+
 # INVENTARIO / COMPRAS / VENTAS / REPORTES
 class InventarioHilos:
     def __init__(self, gestor_excel: GestorExcel, stock_minimo=STOCK_MINIMO):
@@ -566,6 +602,41 @@ class InventarioHilos:
                       f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}")
             print(f"\nTotal de hilos: {len(self.inventario)}")
 
+    # ---- BÚSQUEDAS AVANZADAS (integradas) ----
+    def buscar_hilo_avanzado(self):
+        Utilidades.limpiar_pantalla()
+        print("=== BUSQUEDA AVANZADA ===")
+        print("1. Búsqueda lineal por código")
+        print("2. Búsqueda binaria por código (requiere lista ordenada por código)")
+        print("3. Búsqueda por hashing (tabla de dispersión)")
+        print("4. Volver")
+        op = input("Elegí una opción (1-4): ").strip()
+
+        if op == "4":
+            return
+
+        codigo = input("Ingrese código de color a buscar: ").strip()
+        res = None
+
+        if op == "1":
+            _, res = Busquedas.lineal(self.inventario, "codigo_color", codigo)
+        elif op == "2":
+            lista_ordenada = Ordenamientos.quick_sort(self.inventario, "codigo_color")
+            _, res = Busquedas.binaria(lista_ordenada, "codigo_color", codigo)
+        elif op == "3":
+            tabla = {str(h["codigo_color"]).lower(): h for h in self.inventario}
+            res = Busquedas.hash_busqueda(tabla, codigo)
+        else:
+            print("Opción inválida.")
+            return
+
+        if res:
+            print("\n--- Hilo encontrado ---")
+            print(f"ID: {res.get('id')} | Marca: {res.get('marca')} | Código: {res.get('codigo_color')} | "
+                  f"Descripción: {res.get('descripcion')} | Cantidad: {res.get('cantidad')} | Precio: Q{res.get('precio_unitario')}")
+        else:
+            print("No se encontró el hilo con ese código.")
+
     # ---- ORDENAMIENTO INTEGRADO ----
     def ordenar_inventario(self):
         Utilidades.limpiar_pantalla()
@@ -653,15 +724,16 @@ class SistemaDeInventario:
         while True:
             print("\n==== MENÚ ADMINISTRADOR ====")
             print("1. Registrar nuevo hilo")
-            print("2. Buscar hilo")
-            print("3. Modificar información")
-            print("4. Eliminar hilo")
-            print("5. Registrar compra/reabastecimiento")
-            print("6. Registrar venta")
-            print("7. Reportes y consultas")
-            print("8. Mostrar inventario completo")
-            print("9. Ordenar inventario")
-            print("10. Salir")
+            print("2. Buscar hilo (básico)")
+            print("3. Búsqueda avanzada")
+            print("4. Modificar información")
+            print("5. Eliminar hilo")
+            print("6. Registrar compra/reabastecimiento")
+            print("7. Registrar venta")
+            print("8. Reportes y consultas")
+            print("9. Mostrar inventario completo")
+            print("10. Ordenar inventario")
+            print("11. Salir")
             opcion = input("Elegí una opción: ").strip()
 
             if opcion == "1":
@@ -669,20 +741,22 @@ class SistemaDeInventario:
             elif opcion == "2":
                 self.inventario.buscar_hilo()
             elif opcion == "3":
-                self.inventario.modificar_hilo()
+                self.inventario.buscar_hilo_avanzado()
             elif opcion == "4":
-                self.inventario.eliminar_hilo()
+                self.inventario.modificar_hilo()
             elif opcion == "5":
-                self.inventario.registrar_compra()
+                self.inventario.eliminar_hilo()
             elif opcion == "6":
-                self.inventario.registrar_venta()
+                self.inventario.registrar_compra()
             elif opcion == "7":
-                self.inventario.reportes()
+                self.inventario.registrar_venta()
             elif opcion == "8":
-                self.inventario.mostrar_inventario()
+                self.inventario.reportes()
             elif opcion == "9":
-                self.inventario.ordenar_inventario()
+                self.inventario.mostrar_inventario()
             elif opcion == "10":
+                self.inventario.ordenar_inventario()
+            elif opcion == "11":
                 self.sesion.cerrar_sesion(id_sesion)
                 print("\nSesión cerrada. Nos vemos")
                 break
@@ -693,28 +767,31 @@ class SistemaDeInventario:
     def menu_empleado(self, id_sesion):
         while True:
             print("\n==== MENÚ EMPLEADO ====")
-            print("1. Buscar hilo")
-            print("2. Registrar venta")
-            print("3. Reportes y consultas")
-            print("4. Mostrar inventario completo")
-            print("5. Ordenar inventario")
-            print("6. Salir")
+            print("1. Buscar hilo (básico)")
+            print("2. Búsqueda avanzada")
+            print("3. Registrar venta")
+            print("4. Reportes y consultas")
+            print("5. Mostrar inventario completo")
+            print("6. Ordenar inventario")
+            print("7. Salir")
             opcion = input("Elegí una opción: ").strip()
 
             if opcion == "1":
                 self.inventario.buscar_hilo()
             elif opcion == "2":
+                self.inventario.buscar_hilo_avanzado()
+            elif opcion == "3":
                 if self.permitir_venta_empleado:
                     self.inventario.registrar_venta()
                 else:
                     print("Por ahora, ventas solo las hace el admin.")
-            elif opcion == "3":
-                self.inventario.reportes()
             elif opcion == "4":
-                self.inventario.mostrar_inventario()
+                self.inventario.reportes()
             elif opcion == "5":
-                self.inventario.ordenar_inventario()
+                self.inventario.mostrar_inventario()
             elif opcion == "6":
+                self.inventario.ordenar_inventario()
+            elif opcion == "7":
                 self.sesion.cerrar_sesion(id_sesion)
                 print("\nSesión cerrada. ¡Gracias!")
                 break
