@@ -1,4 +1,6 @@
 from openpyxl import Workbook, load_workbook
+import customtkinter as ctk
+from tkinter import messagebox
 import os
 from datetime import datetime
 
@@ -18,34 +20,24 @@ HOJA_SESIONES = "Sesiones_Usuarios"
 # UTILIDADES
 class Utilidades:
     @staticmethod
-    def limpiar_pantalla():
-        os.system('cls' if os.name == 'nt' else 'clear')
+    def leer_entero_str(valor, minimo=None):
+        try:
+            n = int(valor)
+            if minimo is not None and n < minimo:
+                return None
+            return n
+        except:
+            return None
 
     @staticmethod
-    def leer_entero(mensaje, minimo=None):
-        while True:
-            val = input(mensaje)
-            try:
-                n = int(val)
-                if minimo is not None and n < minimo:
-                    print(f"Debe ser un número entero ≥ {minimo}.")
-                    continue
-                return n
-            except ValueError:
-                print("Error, intente con un número entero")
-
-    @staticmethod
-    def leer_flotante(mensaje, minimo=None):
-        while True:
-            val = input(mensaje)
-            try:
-                f = float(val)
-                if minimo is not None and f < minimo:
-                    print(f"Debe ser un número ≥ {minimo}.")
-                    continue
-                return f
-            except ValueError:
-                print("Error, intente con un número ")
+    def leer_float_str(valor, minimo=None):
+        try:
+            f = float(valor)
+            if minimo is not None and f < minimo:
+                return None
+            return f
+        except:
+            return None
 
 
 # MANEJO DE EXCEL
@@ -115,7 +107,6 @@ class GestorExcel:
 
     def reparar_estructura(self):
         if not os.path.exists(self.nombre_archivo):
-            print("No hay archivo Excel para reparar.")
             return
 
         wb = load_workbook(self.nombre_archivo)
@@ -141,12 +132,10 @@ class GestorExcel:
 
             # Borrar filas con encabezados repetidos
             if filas_erroneas:
-                print(f"Corrigiendo encabezados duplicados en '{hoja_nombre}'...")
                 # Elimina todas las filas excepto la primera
                 hoja.delete_rows(2, hoja.max_row - 1)
 
         wb.save(self.nombre_archivo)
-        print("Archivo Excel reparado correctamente.\n")
 
 # SESIONES
 class SesionUsuario:
@@ -159,7 +148,7 @@ class SesionUsuario:
             hoja = wb.create_sheet(HOJA_SESIONES)
             hoja.append(["ID Sesión", "Usuario", "Rol", "Fecha y Hora de Inicio", "Fecha y Hora de Cierre"])
         hoja = wb[HOJA_SESIONES]
-        id_sesion = hoja.max_row  # correlativo (la fila 1 es encabezado)
+        id_sesion = hoja.max_row  # correlativo
         inicio = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         hoja.append([id_sesion, usuario, rol, inicio, ""])
         wb.save(self.excel.nombre_archivo)
@@ -250,23 +239,13 @@ class InventarioHilos:
                 "total": total
             })
 
-        # --- Asignar ID y aplicar ordenamientos automáticos ---
+        # --- Asignar ID y ordenar automáticamente ---
         self.contador_id = (max((h["id"] for h in self.inventario), default=0) + 1)
-
         if self.inventario:
-            # 1️ Agrupar por marca y ordenar los códigos (Quick Sort)
             self.inventario = self.ordenar_por_codigo_color(self.inventario)
-
-            # 2️  Ordenar por marcas con menor cantidad total (Selection Sort)
             self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
-
-            # 3️ Ordenar por tipo de hilo (alfabéticamente) (Shell Sort)
             self.inventario = self.ordenar_por_tipo(self.inventario)
-
-            # Guardado automáticamente el orden resultante en el archivo Excel
             self.guardar_todo()
-
-
 
     def guardar_todo(self):
         datos_inv = [
@@ -297,343 +276,176 @@ class InventarioHilos:
             ["Código", "Marca", "Descripción", "Cantidad", "Total"],
             datos_vent
         )
-        print("\nListo, el archivo se actualizó.\n")
 
     # ---- Alertas ----
-    def avisar_stock_bajo(self, hilo):
+    def avisar_stock_bajo_gui(self, hilo):
         if hilo["cantidad"] <= self.stock_minimo:
-            print("\n ---STOCK BAJO--- ")
-            print(f"Código: {hilo['codigo_color']}")
-            print(f"Descripción: {hilo['descripcion']}")
-            print(f"Unidades disponibles: {hilo['cantidad']}\n")
+            messagebox.showwarning("Stock bajo",
+                                   f"Código: {hilo['codigo_color']}\n"
+                                   f"Tipo: {hilo['descripcion']}\n"
+                                   f"Unidades: {hilo['cantidad']}")
 
-    # ---- CRUD de Hilos ----
-    def registrar_hilo(self):
-        while True:
-            Utilidades.limpiar_pantalla()
-            print("=== Registrar Nuevo Hilo ===")
-            marca = input("Marca (o 'salir' para volver): ").strip()
-            if marca.lower() == "salir":
-                print("\nRegresando al menú...")
-                break
+    # ---- Apoyo de negocio (sin inputs/prints) ----
+    def existe_marca_codigo(self, marca, codigo):
+        return any(h["marca"].lower() == marca.lower() and str(h["codigo_color"]) == str(codigo)
+                   for h in self.inventario)
 
-            while True:
-                codigo_color = input("Código de color (solo números): ").strip()
-                if codigo_color.lower() == "salir":
-                    print("\nRegresando al menú...")
-                    return
-                if not codigo_color.isdigit():
-                    print("El código debe ser numérico.")
-                    continue
-
-                #Verificar si ya existe el mismo código en la misma marca
-                if any(h["codigo_color"] == codigo_color and h["marca"].lower() == marca.lower() for h in self.inventario):
-                    print("Ese código de color ya existe para esta marca.")
-                    continue
-
-                break
-
-
-            descripcion = input("Descripción: ").strip()
-            cantidad = Utilidades.leer_entero("Cantidad: ", minimo=0)
-            precio_unitario = Utilidades.leer_flotante("Precio unitario: ", minimo=0.0)
-            proveedor = input("Proveedor: ").strip()
-
-            hilo = {
-                "id": self.contador_id,
-                "marca": marca,
-                "codigo_color": codigo_color,
-                "descripcion": descripcion,
-                "cantidad": cantidad,
-                "precio_unitario": precio_unitario,
-                "proveedor": proveedor
-            }
-            self.inventario.append(hilo)
-            self.contador_id += 1
-
-            print(f"\nHilo guardado. ID: {hilo['id']}")
-            self.guardar_todo()
-             # Reordenar y guardar el inventario actualizado automáticamente
-            self.inventario = self.ordenar_por_codigo_color(self.inventario)
-            self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
-            self.inventario = self.ordenar_por_tipo(self.inventario)
-            self.guardar_todo()
-
-
-    def buscar_hilo(self):
-        Utilidades.limpiar_pantalla()
-        print("=== Buscar Hilo ===")
-
-        marca = input("Ingrese la marca (o deje vacío para omitir): ").strip().lower()
-        codigo_color = input("Ingrese el código de color (o deje vacío para omitir): ").strip().lower()
-
-        resultados = self.inventario
-
-    # Filtrar por marca si se indicó
-        if marca:
-            resultados = [h for h in resultados if marca in h["marca"].lower()]
-
-    # Filtrar por código si se indicó
-        if codigo_color:
-            resultados = [h for h in resultados if codigo_color in str(h["codigo_color"]).lower()]
-
-        if resultados:
-            print(f"\nResultados encontrados ({len(resultados)}):\n")
-            for h in resultados:
-                print(f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
-                        f"Descripción:{h['descripcion']} | Cantidad:{h['cantidad']} | "
-                        f"Precio:Q{h['precio_unitario']} | Proveedor:{h['proveedor']}")
-        else:
-            print("No se encontraron hilos con los criterios ingresados.")
-
-    def busqueda_avanzada(self):
-        Utilidades.limpiar_pantalla()
-        print("=== BÚSQUEDA AVANZADA ===")
-        print("1. Búsqueda lineal por código")
-        print("2. Búsqueda binaria por código (requiere lista ordenada)")
-        print("3. Búsqueda por hashing (tabla de dispersión)")
-        print("4. Volver")
-        op = input("Elegí una opción (1-4): ").strip()
-
-        if op == "4":
-            return
-
-        marca = input("Ingrese la marca del hilo: ").strip().lower()
-        codigo = input("Ingrese el código de color: ").strip().lower()
-
-        # Filtrar solo los hilos de esa marca
-        inventario_filtrado = [h for h in self.inventario if h["marca"].lower() == marca]
-        if not inventario_filtrado:
-            print(f"No se encontraron hilos de la marca '{marca}'.")
-            return
-
-        res = None
-
-        # BÚSQUEDA LINEAL
-        if op == "1":
-            for h in inventario_filtrado:
-                if str(h["codigo_color"]).lower() == codigo:
-                    res = h
-                    break
-
-        # BÚSQUEDA BINARIA
-        elif op == "2":
-            lista_ordenada = sorted(inventario_filtrado, key=lambda x: str(x["codigo_color"]).lower())
-            izq, der = 0, len(lista_ordenada) - 1
-            while izq <= der:
-                mid = (izq + der) // 2
-                if str(lista_ordenada[mid]["codigo_color"]).lower() == codigo:
-                    res = lista_ordenada[mid]
-                    break
-                elif str(lista_ordenada[mid]["codigo_color"]).lower() < codigo:
-                    izq = mid + 1
-                else:
-                    der = mid - 1
-
-        # BÚSQUEDA HASH
-        elif op == "3":
-            tabla = {str(h["codigo_color"]).lower(): h for h in inventario_filtrado}
-            res = tabla.get(codigo)
-
-        else:
-            print("Opción inválida.")
-            return
-
-        # Resultado
-        if res:
-            print("\n--- Hilo encontrado ---")
-            print(f"ID: {res['id']} | Marca: {res['marca']} | Código: {res['codigo_color']} | "
-                f"Descripción: {res['descripcion']} | Cantidad: {res['cantidad']} | "
-                f"Precio: Q{res['precio_unitario']} | Proveedor: {res['proveedor']}")
-        else:
-            print(f"No se encontró el hilo con el código '{codigo}' en la marca '{marca}'.")
-
-
-    def modificar_hilo(self):
-        Utilidades.limpiar_pantalla()
-        codigo = input("Código de color del hilo a modificar: ").strip()
-
+    def obtener_por_marca_codigo(self, marca, codigo):
         for h in self.inventario:
-            if h["codigo_color"] == codigo:
-                print(f"Hilo: {h['descripcion']}")
-                nueva_marca = input(f"Nueva marca ({h['marca']}): ").strip() or h["marca"]
-                nueva_desc = input(f"Nueva descripción ({h['descripcion']}): ").strip() or h["descripcion"]
+            if h["marca"].lower() == marca.lower() and str(h["codigo_color"]) == str(codigo):
+                return h
+        return None
 
-                try:
-                    nueva_cantidad = input(f"Nueva cantidad ({h['cantidad']}): ").strip()
-                    if nueva_cantidad:
-                        h["cantidad"] = int(nueva_cantidad)
-                        self.avisar_stock_bajo(h)
-                    nuevo_precio = input(f"Nuevo precio ({h['precio_unitario']}): ").strip()
-                    if nuevo_precio:
-                        h["precio_unitario"] = float(nuevo_precio)
-                except ValueError:
-                    print("Dato inválido, se mantiene lo anterior.")
+    # ---- CRUD de Hilos (usados por la GUI) ----
+    def registrar_hilo_gui(self, marca, tipo, codigo_color, cantidad, precio_unitario, proveedor):
+        # Validar duplicado en misma marca
+        if self.existe_marca_codigo(marca, codigo_color):
+            return False, "Ese código de color ya existe para esta marca."
 
-                nuevo_prov = input(f"Nuevo proveedor ({h['proveedor']}): ").strip() or h["proveedor"]
-                h.update({"marca": nueva_marca, "descripcion": nueva_desc, "proveedor": nuevo_prov})
-                print("Listo, cambios guardados.")
-                self.guardar_todo()
-                return
-        print("Código no encontrado")
+        hilo = {
+            "id": self.contador_id,
+            "marca": marca,
+            "codigo_color": str(codigo_color),
+            "descripcion": tipo,  # mapeo UI "Tipo" -> Excel "Descripción"
+            "cantidad": cantidad,
+            "precio_unitario": precio_unitario,
+            "proveedor": proveedor
+        }
+        self.inventario.append(hilo)
+        self.contador_id += 1
 
-    def eliminar_hilo(self):
-        codigo = input("Código de color del hilo a eliminar: ").strip()
-        for h in self.inventario:
-            if h["codigo_color"] == codigo:
-                if h["cantidad"] == 0:
-                    self.inventario.remove(h)
-                    print("Hilo eliminado.")
-                    self.guardar_todo()
-                else:
-                    print("No se puede eliminar: todavía hay unidades.")
-                return
-        print("Código no encontrado")
+        # Reordenamientos y guardado
+        self.inventario = self.ordenar_por_codigo_color(self.inventario)
+        self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+        self.inventario = self.ordenar_por_tipo(self.inventario)
+        self.guardar_todo()
+        return True, f"Hilo guardado. ID: {hilo['id']}"
 
-    # ---- Compras y Ventas ----
-    def registrar_compra(self):
-        while True:
-            print("\n--- Registrar compra/reabastecimiento ---")
-            codigo = input("Código de color (o 'salir'): ").strip()
-            if codigo.lower() == "salir":
-                print("\nRegresando al menú...")
-                break
-            cantidad = Utilidades.leer_entero("Cantidad comprada: ", minimo=1)
-            costo_unitario = Utilidades.leer_flotante("Costo por unidad: ", minimo=0.0)
+    def modificar_hilo_gui(self, marca, codigo_color, nueva_marca=None, nuevo_tipo=None,
+                           nueva_cantidad=None, nuevo_precio=None, nuevo_proveedor=None):
+        h = self.obtener_por_marca_codigo(marca, codigo_color)
+        if not h:
+            return False, "No se encontró el hilo con esa Marca y Código."
 
-            for h in self.inventario:
-                if h["codigo_color"] == codigo:
-                    h["cantidad"] += cantidad
-                    self.avisar_stock_bajo(h)
-                    self.historial_compras.append({
-                        "codigo_color": codigo,
-                        "marca": h["marca"],
-                        "descripcion": h["descripcion"],
-                        "cantidad": cantidad,
-                        "costo_unitario": costo_unitario,
-                        "total": round(cantidad * costo_unitario, 2)
-                    })
-                    print("Compra guardada y stock actualizado.")
-                    # Reordenar inventario automáticamente tras registrar una compra
-                    self.inventario = self.ordenar_por_codigo_color(self.inventario)
-                    self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
-                    self.inventario = self.ordenar_por_tipo(self.inventario)
-                    self.guardar_todo()
-                    break
-            else:
-                print("Código no encontrado")
+        # Si cambia la marca y/o el código, validar que no choque con otro existente
+        destino_marca = nueva_marca.strip() if (nueva_marca is not None and nueva_marca.strip() != "") else h["marca"]
+        destino_codigo = str(codigo_color)  # no estamos cambiando código en este formulario
 
-    def registrar_venta(self):
-        while True:
-            print("\n--- Registrar venta ---")
-            codigo = input("Código de color (o 'salir'): ").strip()
-            if codigo.lower() == "salir":
-                print("\nRegresando al menú...")
-                break
+        if (destino_marca.lower() != h["marca"].lower()) and self.existe_marca_codigo(destino_marca, destino_codigo):
+            return False, "Ya existe ese código en la nueva marca."
 
-            for h in self.inventario:
-                if h["codigo_color"] == codigo:
-                    print(f"Disponible: {h['cantidad']} unidades")
-                    cantidad = Utilidades.leer_entero("Cantidad vendida: ", minimo=1)
-                    if cantidad > h["cantidad"]:
-                        print("No te alcanza el stock para esa venta.")
-                        break
+        h["marca"] = destino_marca
+        if (nuevo_tipo is not None) and nuevo_tipo.strip() != "":
+            h["descripcion"] = nuevo_tipo.strip()
+        if (nueva_cantidad is not None) and nueva_cantidad != "":
+            n = Utilidades.leer_entero_str(nueva_cantidad, minimo=0)
+            if n is None:
+                return False, "Cantidad inválida."
+            h["cantidad"] = n
+            self.avisar_stock_bajo_gui(h)
+        if (nuevo_precio is not None) and nuevo_precio != "":
+            f = Utilidades.leer_float_str(nuevo_precio, minimo=0.0)
+            if f is None:
+                return False, "Precio inválido."
+            h["precio_unitario"] = f
+        if (nuevo_proveedor is not None) and nuevo_proveedor.strip() != "":
+            h["proveedor"] = nuevo_proveedor.strip()
 
-                    h["cantidad"] -= cantidad
-                    self.avisar_stock_bajo(h)
+        # Ordenar/guardar
+        self.inventario = self.ordenar_por_codigo_color(self.inventario)
+        self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+        self.inventario = self.ordenar_por_tipo(self.inventario)
+        self.guardar_todo()
+        return True, "Cambios guardados."
 
-                    total = round(cantidad * h["precio_unitario"], 2)
-                    self.historial_ventas.append({
-                        "codigo_color": codigo,
-                        "marca": h["marca"],
-                        "descripcion": h["descripcion"],
-                        "cantidad": cantidad,
-                        "total": total
-                    })
+    def eliminar_hilo_gui(self, marca, codigo_color):
+        h = self.obtener_por_marca_codigo(marca, codigo_color)
+        if not h:
+            return False, "No se encontró el hilo con esa Marca y Código."
+        if h["cantidad"] != 0:
+            return False, "No se puede eliminar: aún hay unidades."
+        self.inventario.remove(h)
+        self.guardar_todo()
+        return True, "Hilo eliminado."
 
-                    print(f"Venta guardada. Total: Q{total:.2f}")
-                    # Reordenar inventario automáticamente tras registrar una venta
-                    self.inventario = self.ordenar_por_codigo_color(self.inventario)
-                    self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
-                    self.inventario = self.ordenar_por_tipo(self.inventario)
-                    self.guardar_todo()
-                    break
-            else:
-                print("Código no encontrado")
+    def registrar_compra_gui(self, marca, codigo_color, cantidad, costo_unitario):
+        h = self.obtener_por_marca_codigo(marca, codigo_color)
+        if not h:
+            return False, "No se encontró el hilo con esa Marca y Código."
+        if cantidad < 1:
+            return False, "Cantidad inválida."
 
-    # ---- Reportes ----
-    def reportes(self):
-        print("\n--- Reportes y Consultas ---")
-        print("1. Reporte general de inventario")
-        print("2. Reporte por marca")
-        print("3. Historial de ventas")
-        print("4. Historial de compras")
-        opcion = input("Elegí una opción: ").strip()
+        h["cantidad"] += cantidad
+        self.historial_compras.append({
+            "codigo_color": str(codigo_color),
+            "marca": h["marca"],
+            "descripcion": h["descripcion"],
+            "cantidad": cantidad,
+            "costo_unitario": costo_unitario,
+            "total": round(cantidad * costo_unitario, 2)
+        })
+        self.avisar_stock_bajo_gui(h)
 
-        if opcion == "1":
-            self.mostrar_inventario()
-        elif opcion == "2":
-            marca = input("Marca a consultar: ").lower().strip()
-            encontrados = [h for h in self.inventario if marca in h["marca"].lower()]
-            if encontrados:
-                for h in encontrados:
-                    print(f"Marca:{h['marca']} | Código:{h['codigo_color']} | Desc:{h['descripcion']} | "
-                          f"Cantidad:{h['cantidad']} | Precio:Q{h['precio_unitario']}")
-            else:
-                print("No hay hilos de esa marca.")
-        elif opcion == "3":
-            print("\n--- Historial de Ventas ---")
-            if not self.historial_ventas:
-                print("Aún no hay ventas.")
-            else:
-                for v in self.historial_ventas:
-                    print(f"{v['marca']} | {v['codigo_color']} | {v['descripcion']} | {v['cantidad']} | Q{v['total']:.2f}")
-        elif opcion == "4":
-            print("\n--- Historial de Compras ---")
-            if not self.historial_compras:
-                print("Aún no hay compras.")
-            else:
-                for c in self.historial_compras:
-                    print(f"{c['marca']} | {c['codigo_color']} | {c['descripcion']} | {c['cantidad']} | Q{c['total']:.2f}")
-        else:
-            print("Opción no válida.")
+        # Ordenar/guardar
+        self.inventario = self.ordenar_por_codigo_color(self.inventario)
+        self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+        self.inventario = self.ordenar_por_tipo(self.inventario)
+        self.guardar_todo()
+        return True, "Compra registrada y stock actualizado."
 
-    def mostrar_inventario(self):
-        Utilidades.limpiar_pantalla()
-        print("=== Inventario Completo ===\n")
-        if not self.inventario:
-            print("No hay hilos registrados.")
-        else:
-            print(f"{'ID':<4} {'Marca':<15} {'Código':<10} {'Descripción':<20} {'Cant.':<7} {'Precio(Q)':<10} {'Proveedor'}")
-            print("-" * 80)
-            for h in self.inventario:
-                print(f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<20} "
-                      f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}")
-            print(f"\nTotal de hilos: {len(self.inventario)}")
+    def registrar_venta_gui(self, marca, codigo_color, cantidad):
+        h = self.obtener_por_marca_codigo(marca, codigo_color)
+        if not h:
+            return False, "No se encontró el hilo con esa Marca y Código."
+        if cantidad < 1:
+            return False, "Cantidad inválida."
+        if cantidad > h["cantidad"]:
+            return False, "No alcanza el stock para esa venta."
 
-    #  MÉTODOS DE ORDENAMIENTO AUTOMÁTICO DEL INVENTARIO
-    # QUICK SORT
+        h["cantidad"] -= cantidad
+        total = round(cantidad * h["precio_unitario"], 2)
+        self.historial_ventas.append({
+            "codigo_color": str(codigo_color),
+            "marca": h["marca"],
+            "descripcion": h["descripcion"],
+            "cantidad": cantidad,
+            "total": total
+        })
+        self.avisar_stock_bajo_gui(h)
 
+        # Ordenar/guardar
+        self.inventario = self.ordenar_por_codigo_color(self.inventario)
+        self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
+        self.inventario = self.ordenar_por_tipo(self.inventario)
+        self.guardar_todo()
+        return True, f"Venta registrada. Total: Q{total:.2f}"
+
+    # ---- Reportes simples (devuelven listas) ----
+    def reporte_inventario(self):
+        return list(self.inventario)
+
+    def reporte_ventas(self):
+        return list(self.historial_ventas)
+
+    def reporte_compras(self):
+        return list(self.historial_compras)
+
+    # ORDENAMIENTOS
     def ordenar_por_codigo_color(self, inventario):
         if not inventario:
             return inventario
 
-        # 1 Agrupar hilos por marca
         grupos = {}
         for hilo in inventario:
             marca = hilo["marca"]
             grupos.setdefault(marca, []).append(hilo)
 
         inventario_ordenado = []
-
-        # 2️ Ordenar los códigos de color dentro de cada grupo (Quick Sort)
         for marca, lista in sorted(grupos.items(), key=lambda x: x[0].lower()):
             lista_ordenada = self._quick_sort_codigo(lista)
             inventario_ordenado.extend(lista_ordenada)
-
         return inventario_ordenado
 
-    # Función auxiliar interna: aplica Quick Sort recursivo dentro de cada marca
     def _quick_sort_codigo(self, lista):
         if len(lista) <= 1:
             return lista
@@ -660,21 +472,15 @@ class InventarioHilos:
                 iguales +
                 self._quick_sort_codigo(mayores))
 
-    # MÉTODO 2: SELECTION SORT POR MARCA CON MENOR STOCK
     def ordenar_por_marca_con_menos_stock(self, inventario):
-        # Calcular total de unidades por marca
         resumen = {}
         for hilo in inventario:
             marca = hilo["marca"]
             cantidad = int(hilo["cantidad"])
             resumen[marca] = resumen.get(marca, 0) + cantidad
 
-        # Crear lista auxiliar con total_marca
-        lista_aux = [
-            {**h, "total_marca": resumen[h["marca"]]} for h in inventario
-        ]
+        lista_aux = [{**h, "total_marca": resumen[h["marca"]]} for h in inventario]
 
-        # Aplicar Selection Sort según total_marca
         n = len(lista_aux)
         for i in range(n):
             min_idx = i
@@ -683,13 +489,10 @@ class InventarioHilos:
                     min_idx = j
             lista_aux[i], lista_aux[min_idx] = lista_aux[min_idx], lista_aux[i]
 
-        # Eliminar el campo auxiliar antes de devolver la lista
         for h in lista_aux:
             del h["total_marca"]
 
         return lista_aux
-
-    # MÉTODO 3: SHELL SORT POR TIPO DE HILO
 
     def ordenar_por_tipo(self, inventario):
         lista_ordenada = inventario[:]
@@ -707,7 +510,7 @@ class InventarioHilos:
         return lista_ordenada
 
 
-# SISTEMA (login + menús)
+# SISTEMA (usuarios + sesión)
 class SistemaDeInventario:
     def __init__(self, archivo_excel=NOMBRE_ARCHIVO, permitir_venta_empleado=PERMITIR_VENTA_EMPLEADO):
         self.excel = GestorExcel(archivo_excel)
@@ -717,104 +520,455 @@ class SistemaDeInventario:
         self.sesion = SesionUsuario(self.excel)
         self.usuarios = self._cargar_usuarios()
         self.permitir_venta_empleado = permitir_venta_empleado
+        self.id_sesion_activa = None
+        self.usuario_actual = None  # dict con usuario y rol
 
     def _cargar_usuarios(self):
-        return [{"usuario": f[0], "password": f[1], "rol": str(f[2]).lower()} for f in self.excel.cargar_hoja(HOJA_USUARIOS)]
+        return [{"usuario": f[0], "password": f[1], "rol": str(f[2]).lower()}
+                for f in self.excel.cargar_hoja(HOJA_USUARIOS)]
 
-    def iniciar_sesion(self):
-        print("=== INICIO DE SESIÓN ===")
-        while True:
-            usr = input("Usuario: ").strip()
-            pwd = input("Contraseña: ").strip()
-            for u in self.usuarios:
-                if u["usuario"] == usr and u["password"] == pwd:
-                    print(f"\n¡Bienvenido, {usr}! Rol: {u['rol']}\n")
-                    id_sesion = self.sesion.abrir_sesion(usr, u["rol"])
-                    return u["rol"], id_sesion
-            print("Usuario o contraseña incorrectos\n")
+    def validar_credenciales(self, usr, pwd):
+        for u in self.usuarios:
+            if u["usuario"] == usr and u["password"] == pwd:
+                return u
+        return None
 
-    # ---- Menú Admin (completo) ----
-    def menu_admin(self, id_sesion):
-        while True:
-            print("\n==== MENÚ ADMINISTRADOR ====")
-            print("1. Registrar nuevo hilo")
-            print("2. Buscar hilo")
-            print("3. Modificar información")
-            print("4. Eliminar hilo")
-            print("5. Registrar compra/reabastecimiento")
-            print("6. Registrar venta")
-            print("7. Reportes y consultas")
-            print("8. Mostrar inventario completo")
-            print("9. Búsqueda avanzada")
-            print("10. Salir")
-            opcion = input("Elegí una opción: ").strip()
+    def abrir_sesion(self, usuario_dict):
+        self.usuario_actual = usuario_dict
+        self.id_sesion_activa = self.sesion.abrir_sesion(usuario_dict["usuario"], usuario_dict["rol"])
 
-            if opcion == "1":
-                self.inventario.registrar_hilo()
-            elif opcion == "2":
-                self.inventario.buscar_hilo()
-            elif opcion == "3":
-                self.inventario.modificar_hilo()
-            elif opcion == "4":
-                self.inventario.eliminar_hilo()
-            elif opcion == "5":
-                self.inventario.registrar_compra()
-            elif opcion == "6":
-                self.inventario.registrar_venta()
-            elif opcion == "7":
-                self.inventario.reportes()
-            elif opcion == "8":
-                self.inventario.mostrar_inventario()
-            elif opcion == "9":
-                self.inventario.busqueda_avanzada()
-            elif opcion == "10":
-                self.sesion.cerrar_sesion(id_sesion)
-                print("\nsesión cerrada. Nos vemos")
-                break
-            else:
-                print("Esa opción no existe, prueba")
+    def cerrar_sesion(self):
+        if self.id_sesion_activa is not None:
+            self.sesion.cerrar_sesion(self.id_sesion_activa)
+        self.id_sesion_activa = None
+        self.usuario_actual = None
 
-    # ---- Menú Empleado (completo) ----
-    def menu_empleado(self, id_sesion):
-        while True:
-            print("1. Buscar hilo")
-            print("2. Búsqueda avanzada")  
-            print("3. Registrar venta")
-            print("4. Reportes y consultas")
-            print("5. Mostrar inventario completo")
-            print("6. Salir")
-            opcion = input("Elegí una opción: ").strip()
 
-            if opcion == "1":
-                self.inventario.buscar_hilo()
-            elif opcion == "2":
-                self.inventario.busqueda_avanzada()
-            elif opcion == "3":
-                if self.permitir_venta_empleado:
-                    self.inventario.registrar_venta()
-                else:
-                    print("Por ahora, ventas solo las hace el admin.")
-            elif opcion == "4":
-                self.inventario.reportes()
-            elif opcion == "5":
-                self.inventario.mostrar_inventario()
-            elif opcion == "6":
-                self.sesion.cerrar_sesion(id_sesion)
-                print("\nSesión cerrada. ¡Gracias!")
-                break
-            else:
-                print("Esa opción no existe, probá otra.")
+# INTERFAZ GRÁFICA (CustomTkinter)
+class AppGUI:
+    def __init__(self):
+        # Estilos
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
 
-    # ---- Arranque ----
-    def ejecutar(self):
-        rol, id_sesion = self.iniciar_sesion()
-        if rol == "admin":
-            self.menu_admin(id_sesion)
+        # Sistema
+        self.sys = SistemaDeInventario()
+
+        # Ventana
+        self.root = ctk.CTk()
+        self.root.title("Tienda de Hilos Arcoíris")
+        try:
+            self.root.state("zoomed")
+        except:
+            self.root.geometry("1200x700")
+
+        # Frames
+        self.frame_actual = None
+        self._build_login()
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.root.mainloop()
+
+    # ---------- Layout helpers ----------
+    def clear_frame(self):
+        if self.frame_actual is not None:
+            self.frame_actual.pack_forget()
+            self.frame_actual.destroy()
+        self.frame_actual = ctk.CTkFrame(self.root)
+        self.frame_actual.pack(expand=True, fill="both")
+
+    def header(self, parent, titulo="Tienda de Hilos Arcoíris"):
+        encabezado = ctk.CTkFrame(parent, height=80, fg_color="#1e1e1e")
+        encabezado.pack(fill="x")
+        lbl = ctk.CTkLabel(encabezado, text=titulo, font=("Arial", 32, "bold"), text_color="#ffcc70")
+        lbl.pack(pady=15)
+        return encabezado
+
+    def row_entry(self, parent, etiqueta, var: ctk.StringVar, width=280):
+        cont = ctk.CTkFrame(parent, fg_color="transparent")
+        cont.pack(pady=8)
+        lbl = ctk.CTkLabel(cont, text=etiqueta, font=("Arial", 16))
+        lbl.pack(side="left", padx=10)
+        ent = ctk.CTkEntry(cont, textvariable=var, width=width, height=35)
+        ent.pack(side="left")
+        return ent
+
+    def boton_volver(self, parent, destino):
+        ctk.CTkButton(parent, text="↩ Volver", command=destino, width=250, height=40).pack(pady=10)
+
+    # ---------- Pantallas ----------
+    def _build_login(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Tienda de Hilos Arcoíris")
+
+        login_frame = ctk.CTkFrame(self.frame_actual)
+        login_frame.pack(expand=True, ipadx=20, ipady=20)
+
+        ctk.CTkLabel(login_frame, text="Inicio de sesión", font=("Arial", 24, "bold")).pack(pady=20)
+
+        v_user = ctk.StringVar()
+        v_pass = ctk.StringVar()
+        self.row_entry(login_frame, "Usuario", v_user)
+        self.row_entry(login_frame, "Contraseña", v_pass)
+
+        def hacer_login():
+            usr = v_user.get().strip()
+            pwd = v_pass.get().strip()
+            u = self.sys.validar_credenciales(usr, pwd)
+            if not u:
+                messagebox.showerror("Error", "Usuario o contraseña incorrectos.")
+                return
+            self.sys.abrir_sesion(u)
+            messagebox.showinfo("Bienvenido", f"Sesión iniciada como {u['rol']}.")
+            self._build_menu()
+
+        ctk.CTkButton(login_frame, text="Entrar", width=220, height=40, command=hacer_login).pack(pady=15)
+
+    def _build_menu(self):
+        self.clear_frame()
+        self.header(self.frame_actual)
+
+        tipo = "ADMINISTRADOR" if self.sys.usuario_actual["rol"] == "admin" else "EMPLEADO"
+        ctk.CTkLabel(self.frame_actual, text=f"Usuario: {self.sys.usuario_actual['usuario']}  |  Rol: {tipo}",
+                     font=("Arial", 16, "italic"), text_color="lightblue").pack(pady=(12, 2))
+
+        ctk.CTkLabel(self.frame_actual, text="MENÚ PRINCIPAL", font=("Arial", 26, "bold")).pack(pady=10)
+
+        # Opciones según rol
+        opciones = []
+        if self.sys.usuario_actual["rol"] == "admin":
+            opciones = [
+                ("Registrar nuevo hilo", self.ui_registrar_hilo),
+                ("Buscar hilo", self.ui_buscar_hilo),
+                ("Modificar información", self.ui_modificar_hilo),
+                ("Eliminar hilo", self.ui_eliminar_hilo),
+                ("Registrar compra / reabastecimiento", self.ui_registrar_compra),
+                ("Registrar venta", self.ui_registrar_venta),
+                ("Reportes y consultas", self.ui_reportes),
+                ("Mostrar inventario completo", self.ui_inventario),
+                ("Cerrar sesión y salir", self.on_close)
+            ]
         else:
-            self.menu_empleado(id_sesion)
+            opciones = [
+                ("Buscar hilo", self.ui_buscar_hilo),
+                ("Registrar venta", self.ui_registrar_venta if PERMITIR_VENTA_EMPLEADO else self._no_permitido),
+                ("Reportes y consultas", self.ui_reportes),
+                ("Mostrar inventario completo", self.ui_inventario),
+                ("Cerrar sesión y salir", self.on_close)
+            ]
+
+        botones = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        botones.pack(pady=10)
+        for texto, cmd in opciones:
+            ctk.CTkButton(botones, text=texto, command=cmd, width=420, height=42, font=("Arial", 16)).pack(pady=7)
+
+        ctk.CTkButton(self.frame_actual, text="↩ Cerrar sesión", fg_color="#444", hover_color="#666",
+                      command=self._logout, width=280, height=38).pack(pady=10)
+
+    def _logout(self):
+        self.sys.cerrar_sesion()
+        self._build_login()
+
+    def _no_permitido(self):
+        messagebox.showwarning("Restringido", "Ventas solo permitidas al administrador.")
+
+    # ---------- Subpantallas ----------
+    def ui_registrar_hilo(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Registrar nuevo hilo")
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=10)
+
+        v_marca = ctk.StringVar()
+        v_tipo = ctk.StringVar()          # se guarda en Excel como "Descripción"
+        v_codigo = ctk.StringVar()
+        v_cantidad = ctk.StringVar()
+        v_precio = ctk.StringVar()
+        v_proveedor = ctk.StringVar()
+
+        self.row_entry(form, "Marca", v_marca)
+        self.row_entry(form, "Tipo", v_tipo)
+        self.row_entry(form, "Código de color", v_codigo)
+        self.row_entry(form, "Cantidad", v_cantidad)
+        self.row_entry(form, "Precio por unidad", v_precio)
+        self.row_entry(form, "Proveedor", v_proveedor)
+
+        def confirmar():
+            datos = { "Marca": v_marca.get().strip(),
+                      "Tipo": v_tipo.get().strip(),
+                      "Código": v_codigo.get().strip(),
+                      "Cantidad": v_cantidad.get().strip(),
+                      "Precio": v_precio.get().strip(),
+                      "Proveedor": v_proveedor.get().strip() }
+
+            if any(v == "" for v in datos.values()):
+                messagebox.showwarning("Atención", "Por favor llena todos los campos.")
+                return
+
+            n_cant = Utilidades.leer_entero_str(datos["Cantidad"], minimo=0)
+            n_prec = Utilidades.leer_float_str(datos["Precio"], minimo=0.0)
+            if n_cant is None or n_prec is None:
+                messagebox.showwarning("Atención", "Cantidad o precio inválido.")
+                return
+
+            ok, msg = self.sys.inventario.registrar_hilo_gui(
+                datos["Marca"], datos["Tipo"], datos["Código"], n_cant, n_prec, datos["Proveedor"]
+            )
+            if ok:
+                messagebox.showinfo("Éxito", msg)
+                self._build_menu()
+            else:
+                messagebox.showwarning("Atención", msg)
+
+        ctk.CTkButton(form, text="Guardar hilo", command=confirmar, width=260, height=42).pack(pady=15)
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_buscar_hilo(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Buscar Hilo")
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=10)
+
+        v_marca = ctk.StringVar()
+        v_codigo = ctk.StringVar()
+        self.row_entry(form, "Marca", v_marca)
+        self.row_entry(form, "Código de color", v_codigo)
+
+        result_box = ctk.CTkTextbox(self.frame_actual, width=900, height=220)
+        result_box.pack(pady=10)
+
+        def buscar():
+            marca = v_marca.get().strip()
+            codigo = v_codigo.get().strip()
+            if marca == "" or codigo == "":
+                messagebox.showwarning("Atención", "Llene Marca y Código.")
+                return
+            h = self.sys.inventario.obtener_por_marca_codigo(marca, codigo)
+            result_box.delete("1.0", "end")
+            if h:
+                result_box.insert("end",
+                    f"ID: {h['id']}\nMarca: {h['marca']}\nCódigo: {h['codigo_color']}\n"
+                    f"Tipo: {h['descripcion']}\nCantidad: {h['cantidad']}\n"
+                    f"Precio: Q{h['precio_unitario']:.2f}\nProveedor: {h['proveedor']}\n")
+            else:
+                result_box.insert("end", "No se encontró el hilo.")
+
+        ctk.CTkButton(form, text="Buscar", command=buscar, width=220, height=40).pack(pady=12)
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_modificar_hilo(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Modificar Hilo")
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=10)
+
+        v_marca = ctk.StringVar()
+        v_codigo = ctk.StringVar()
+        v_nueva_marca = ctk.StringVar()
+        v_nuevo_tipo = ctk.StringVar()
+        v_nueva_cantidad = ctk.StringVar()
+        v_nuevo_precio = ctk.StringVar()
+        v_nuevo_prov = ctk.StringVar()
+
+        self.row_entry(form, "Marca (actual)", v_marca)
+        self.row_entry(form, "Código de color (actual)", v_codigo)
+        self.row_entry(form, "Nueva marca (opcional)", v_nueva_marca)
+        self.row_entry(form, "Nuevo tipo (opcional)", v_nuevo_tipo)
+        self.row_entry(form, "Nueva cantidad (opcional)", v_nueva_cantidad)
+        self.row_entry(form, "Nuevo precio (opcional)", v_nuevo_precio)
+        self.row_entry(form, "Nuevo proveedor (opcional)", v_nuevo_prov)
+
+        def confirmar():
+            m = v_marca.get().strip()
+            c = v_codigo.get().strip()
+            if m == "" or c == "":
+                messagebox.showwarning("Atención", "Marca y Código actuales son obligatorios.")
+                return
+
+            ok, msg = self.sys.inventario.modificar_hilo_gui(
+                m, c,
+                nueva_marca=v_nueva_marca.get(),
+                nuevo_tipo=v_nuevo_tipo.get(),
+                nueva_cantidad=v_nueva_cantidad.get(),
+                nuevo_precio=v_nuevo_precio.get(),
+                nuevo_proveedor=v_nuevo_prov.get()
+            )
+            if ok:
+                messagebox.showinfo("Éxito", msg)
+                self._build_menu()
+            else:
+                messagebox.showwarning("Atención", msg)
+
+        ctk.CTkButton(form, text="Guardar cambios", command=confirmar, width=260, height=42).pack(pady=15)
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_eliminar_hilo(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Eliminar Hilo")
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=10)
+
+        v_marca = ctk.StringVar()
+        v_codigo = ctk.StringVar()
+        self.row_entry(form, "Marca", v_marca)
+        self.row_entry(form, "Código de color", v_codigo)
+
+        def confirmar():
+            ok, msg = self.sys.inventario.eliminar_hilo_gui(v_marca.get().strip(), v_codigo.get().strip())
+            if ok:
+                messagebox.showinfo("Éxito", msg)
+                self._build_menu()
+            else:
+                messagebox.showwarning("Atención", msg)
+
+        ctk.CTkButton(form, text="Eliminar hilo", command=confirmar, width=240, height=40).pack(pady=12)
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_registrar_compra(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Registrar Compra / Reabastecimiento")
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=10)
+
+        v_marca = ctk.StringVar()
+        v_codigo = ctk.StringVar()
+        v_cantidad = ctk.StringVar()
+        v_costo = ctk.StringVar()
+
+        self.row_entry(form, "Marca", v_marca)
+        self.row_entry(form, "Código de color", v_codigo)
+        self.row_entry(form, "Cantidad comprada", v_cantidad)
+        self.row_entry(form, "Costo por unidad", v_costo)
+
+        def confirmar():
+            m = v_marca.get().strip()
+            c = v_codigo.get().strip()
+            cant = Utilidades.leer_entero_str(v_cantidad.get().strip(), minimo=1)
+            costo = Utilidades.leer_float_str(v_costo.get().strip(), minimo=0.0)
+            if any(x in (None, "") for x in [m, c, cant, costo]):
+                messagebox.showwarning("Atención", "Complete los datos correctamente.")
+                return
+            ok, msg = self.sys.inventario.registrar_compra_gui(m, c, cant, costo)
+            if ok:
+                messagebox.showinfo("Éxito", msg)
+                self._build_menu()
+            else:
+                messagebox.showwarning("Atención", msg)
+
+        ctk.CTkButton(form, text="Registrar compra", command=confirmar, width=240, height=40).pack(pady=12)
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_registrar_venta(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Registrar Venta")
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=10)
+
+        v_marca = ctk.StringVar()
+        v_codigo = ctk.StringVar()
+        v_cantidad = ctk.StringVar()
+
+        self.row_entry(form, "Marca", v_marca)
+        self.row_entry(form, "Código de color", v_codigo)
+        self.row_entry(form, "Cantidad vendida", v_cantidad)
+
+        def confirmar():
+            m = v_marca.get().strip()
+            c = v_codigo.get().strip()
+            cant = Utilidades.leer_entero_str(v_cantidad.get().strip(), minimo=1)
+            if any(x in (None, "") for x in [m, c, cant]):
+                messagebox.showwarning("Atención", "Complete los datos correctamente.")
+                return
+            ok, msg = self.sys.inventario.registrar_venta_gui(m, c, cant)
+            if ok:
+                messagebox.showinfo("Éxito", msg)
+                self._build_menu()
+            else:
+                messagebox.showwarning("Atención", msg)
+
+        ctk.CTkButton(form, text="Registrar venta", command=confirmar, width=240, height=40).pack(pady=12)
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_reportes(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Reportes y Consultas")
+        cont = ctk.CTkFrame(self.frame_actual)
+        cont.pack(pady=10)
+
+        # Botones de reporte
+        btns = ctk.CTkFrame(cont, fg_color="transparent")
+        btns.pack(pady=6)
+        out = ctk.CTkTextbox(self.frame_actual, width=1000, height=350)
+        out.pack(pady=10)
+
+        def rep_inv():
+            out.delete("1.0", "end")
+            data = self.sys.inventario.reporte_inventario()
+            if not data:
+                out.insert("end", "No hay hilos registrados.\n")
+                return
+            for h in data:
+                out.insert("end", f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
+                                  f"Tipo:{h['descripcion']} | Cant:{h['cantidad']} | "
+                                  f"Precio:Q{h['precio_unitario']:.2f} | Prov:{h['proveedor']}\n")
+
+        def rep_ven():
+            out.delete("1.0", "end")
+            data = self.sys.inventario.reporte_ventas()
+            if not data:
+                out.insert("end", "Aún no hay ventas.\n")
+                return
+            for v in data:
+                out.insert("end", f"{v['marca']} | {v['codigo_color']} | {v['descripcion']} | "
+                                  f"{v['cantidad']} | Total Q{v['total']:.2f}\n")
+
+        def rep_com():
+            out.delete("1.0", "end")
+            data = self.sys.inventario.reporte_compras()
+            if not data:
+                out.insert("end", "Aún no hay compras.\n")
+                return
+            for c in data:
+                out.insert("end", f"{c['marca']} | {c['codigo_color']} | {c['descripcion']} | "
+                                  f"{c['cantidad']} | Costo Q{c['costo_unitario']:.2f} | "
+                                  f"Total Q{c['total']:.2f}\n")
+
+        ctk.CTkButton(btns, text="Inventario", command=rep_inv, width=180, height=34).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Historial Ventas", command=rep_ven, width=180, height=34).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Historial Compras", command=rep_com, width=180, height=34).pack(side="left", padx=6)
+
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    def ui_inventario(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Inventario Completo")
+
+        out = ctk.CTkTextbox(self.frame_actual, width=1100, height=460)
+        out.pack(pady=10)
+
+        data = self.sys.inventario.reporte_inventario()
+        if not data:
+            out.insert("end", "No hay hilos registrados.\n")
+        else:
+            out.insert("end", f"{'ID':<4} {'Marca':<15} {'Código':<10} {'Tipo':<18} {'Cant.':<7} {'Precio(Q)':<10} {'Proveedor'}\n")
+            out.insert("end", "-" * 90 + "\n")
+            for h in data:
+                out.insert("end",
+                           f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<18} "
+                           f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}\n")
+
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    # ---------- cierre ----------
+    def on_close(self):
+        # Cierra sesión si estaba abierta
+        try:
+            self.sys.cerrar_sesion()
+        except:
+            pass
+        self.root.destroy()
 
 
 # MAIN
 if __name__ == "__main__":
-    app = SistemaDeInventario()
-    app.ejecutar()
+    AppGUI()
