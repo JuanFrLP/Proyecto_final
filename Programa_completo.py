@@ -1,6 +1,6 @@
 from openpyxl import Workbook, load_workbook
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 import os
 from datetime import datetime
 
@@ -26,7 +26,7 @@ class Utilidades:
             if minimo is not None and n < minimo:
                 return None
             return n
-        except:
+        except Exception:
             return None
 
     @staticmethod
@@ -36,7 +36,7 @@ class Utilidades:
             if minimo is not None and f < minimo:
                 return None
             return f
-        except:
+        except Exception:
             return None
 
 
@@ -62,7 +62,7 @@ class GestorExcel:
             HOJA_COMPRAS: ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"],
             HOJA_VENTAS: ["Código", "Marca", "Descripción", "Cantidad", "Total"],
             HOJA_USUARIOS: ["Usuario", "Contraseña", "Rol"],
-            HOJA_SESIONES: ["ID Sesión", "Usuario", "Rol", "Fecha y Hora de Inicio", "Fecha y Hora de Cierre"]
+            HOJA_SESIONES: ["ID Sesión", "Usuario", "Rol", "Fecha y Hora de Inicio", "Fecha y Hora de Cierre"],
         }
 
         for hoja, encabezados in definiciones.items():
@@ -115,7 +115,7 @@ class GestorExcel:
         encabezados_validos = {
             HOJA_INVENTARIO: ["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"],
             HOJA_COMPRAS: ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"],
-            HOJA_VENTAS: ["Código", "Marca", "Descripción", "Cantidad", "Total"]
+            HOJA_VENTAS: ["Código", "Marca", "Descripción", "Cantidad", "Total"],
         }
 
         for hoja_nombre in hojas_principales:
@@ -132,10 +132,10 @@ class GestorExcel:
 
             # Borrar filas con encabezados repetidos
             if filas_erroneas:
-                # Elimina todas las filas excepto la primera
                 hoja.delete_rows(2, hoja.max_row - 1)
 
         wb.save(self.nombre_archivo)
+
 
 # SESIONES
 class SesionUsuario:
@@ -175,7 +175,16 @@ class InventarioHilos:
         self.historial_ventas = []
         self.historial_compras = []
         self.contador_id = 1
+        # --- Índice Hash: (marca.lower(), codigo_str) -> dict del hilo
+        self.hash_index = {}
         self.cargar_todo()
+
+    # ---- Utilidad interna: reconstruir el índice hash
+    def _rebuild_hash_index(self):
+        self.hash_index.clear()
+        for h in self.inventario:
+            clave = (h["marca"].lower(), str(h["codigo_color"]))
+            self.hash_index[clave] = h
 
     def cargar_todo(self):
         self.inventario.clear()
@@ -197,15 +206,17 @@ class InventarioHilos:
             except (ValueError, TypeError):
                 precio_val = 0.0
 
-            self.inventario.append({
-                "id": id_val,
-                "marca": fila[1],
-                "codigo_color": str(fila[2]),
-                "descripcion": fila[3],
-                "cantidad": cantidad_val,
-                "precio_unitario": precio_val,
-                "proveedor": fila[6]
-            })
+            self.inventario.append(
+                {
+                    "id": id_val,
+                    "marca": fila[1],
+                    "codigo_color": str(fila[2]),
+                    "descripcion": fila[3],
+                    "cantidad": cantidad_val,
+                    "precio_unitario": precio_val,
+                    "proveedor": fila[6],
+                }
+            )
 
         # --- Historial de Compras ---
         for f in self.excel.cargar_hoja(HOJA_COMPRAS):
@@ -215,14 +226,16 @@ class InventarioHilos:
                 total = float(f[5])
             except (ValueError, TypeError):
                 continue
-            self.historial_compras.append({
-                "codigo_color": str(f[0]),
-                "marca": f[1],
-                "descripcion": f[2],
-                "cantidad": cant,
-                "costo_unitario": costo,
-                "total": total
-            })
+            self.historial_compras.append(
+                {
+                    "codigo_color": str(f[0]),
+                    "marca": f[1],
+                    "descripcion": f[2],
+                    "cantidad": cant,
+                    "costo_unitario": costo,
+                    "total": total,
+                }
+            )
 
         # --- Historial de Ventas ---
         for f in self.excel.cargar_hoja(HOJA_VENTAS):
@@ -231,16 +244,23 @@ class InventarioHilos:
                 total = float(f[4])
             except (ValueError, TypeError):
                 continue
-            self.historial_ventas.append({
-                "codigo_color": str(f[0]),
-                "marca": f[1],
-                "descripcion": f[2],
-                "cantidad": cant,
-                "total": total
-            })
+            self.historial_ventas.append(
+                {
+                    "codigo_color": str(f[0]),
+                    "marca": f[1],
+                    "descripcion": f[2],
+                    "cantidad": cant,
+                    "total": total,
+                }
+            )
 
-        # --- Asignar ID y ordenar automáticamente ---
-        self.contador_id = (max((h["id"] for h in self.inventario), default=0) + 1)
+        # --- Asignar ID ---
+        self.contador_id = max((h["id"] for h in self.inventario), default=0) + 1
+
+        # --- Construir índice hash
+        self._rebuild_hash_index()
+
+        # --- Ordenar automáticamente y guardar (si hay inventario)
         if self.inventario:
             self.inventario = self.ordenar_por_codigo_color(self.inventario)
             self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
@@ -264,41 +284,42 @@ class InventarioHilos:
         self.excel.guardar_hoja(
             HOJA_INVENTARIO,
             ["ID", "Marca", "Código de Color", "Descripción", "Cantidad", "Precio Unitario", "Proveedor"],
-            datos_inv
+            datos_inv,
         )
         self.excel.guardar_hoja(
-            HOJA_COMPRAS,
-            ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"],
-            datos_comp
+            HOJA_COMPRAS, ["Código", "Marca", "Descripción", "Cantidad", "Costo Unitario", "Total"], datos_comp
         )
-        self.excel.guardar_hoja(
-            HOJA_VENTAS,
-            ["Código", "Marca", "Descripción", "Cantidad", "Total"],
-            datos_vent
-        )
+        self.excel.guardar_hoja(HOJA_VENTAS, ["Código", "Marca", "Descripción", "Cantidad", "Total"], datos_vent)
 
     # ---- Alertas ----
     def avisar_stock_bajo_gui(self, hilo):
         if hilo["cantidad"] <= self.stock_minimo:
-            messagebox.showwarning("Stock bajo",
-                                   f"Código: {hilo['codigo_color']}\n"
-                                   f"Tipo: {hilo['descripcion']}\n"
-                                   f"Unidades: {hilo['cantidad']}")
+            messagebox.showwarning(
+                "Stock bajo",
+                f"Código: {hilo['codigo_color']}\n"
+                f"Tipo: {hilo['descripcion']}\n"
+                f"Unidades: {hilo['cantidad']}",
+            )
 
     # ---- Apoyo de negocio (sin inputs/prints) ----
-    def existe_marca_codigo(self, marca, codigo):
-        return any(h["marca"].lower() == marca.lower() and str(h["codigo_color"]) == str(codigo)
-                   for h in self.inventario)
+    def existe_marca_codigo(self, marca, codigo):  # Búsqueda secuencial
+        return any(
+            h["marca"].lower() == marca.lower() and str(h["codigo_color"]) == str(codigo) for h in self.inventario
+        )
 
-    def obtener_por_marca_codigo(self, marca, codigo):
+    def obtener_por_marca_codigo(self, marca, codigo):  # Búsqueda secuencial
         for h in self.inventario:
             if h["marca"].lower() == marca.lower() and str(h["codigo_color"]) == str(codigo):
                 return h
         return None
 
+    # ---- Búsqueda por HASH (O(1) promedio) ----
+    def buscar_hash(self, marca, codigo):
+        clave = (marca.lower(), str(codigo))
+        return self.hash_index.get(clave, None)
+
     # ---- CRUD de Hilos (usados por la GUI) ----
     def registrar_hilo_gui(self, marca, tipo, codigo_color, cantidad, precio_unitario, proveedor):
-        # Validar duplicado en misma marca
         if self.existe_marca_codigo(marca, codigo_color):
             return False, "Ese código de color ya existe para esta marca."
 
@@ -309,10 +330,13 @@ class InventarioHilos:
             "descripcion": tipo,  # mapeo UI "Tipo" -> Excel "Descripción"
             "cantidad": cantidad,
             "precio_unitario": precio_unitario,
-            "proveedor": proveedor
+            "proveedor": proveedor,
         }
         self.inventario.append(hilo)
         self.contador_id += 1
+
+        # Actualizar hash (clave nueva)
+        self.hash_index[(hilo["marca"].lower(), str(hilo["codigo_color"]))] = hilo
 
         # Reordenamientos y guardado
         self.inventario = self.ordenar_por_codigo_color(self.inventario)
@@ -321,8 +345,16 @@ class InventarioHilos:
         self.guardar_todo()
         return True, f"Hilo guardado. ID: {hilo['id']}"
 
-    def modificar_hilo_gui(self, marca, codigo_color, nueva_marca=None, nuevo_tipo=None,
-                           nueva_cantidad=None, nuevo_precio=None, nuevo_proveedor=None):
+    def modificar_hilo_gui(
+        self,
+        marca,
+        codigo_color,
+        nueva_marca=None,
+        nuevo_tipo=None,
+        nueva_cantidad=None,
+        nuevo_precio=None,
+        nuevo_proveedor=None,
+    ):
         h = self.obtener_por_marca_codigo(marca, codigo_color)
         if not h:
             return False, "No se encontró el hilo con esa Marca y Código."
@@ -333,6 +365,9 @@ class InventarioHilos:
 
         if (destino_marca.lower() != h["marca"].lower()) and self.existe_marca_codigo(destino_marca, destino_codigo):
             return False, "Ya existe ese código en la nueva marca."
+
+        # Antes: clave vieja
+        clave_vieja = (h["marca"].lower(), str(h["codigo_color"]))
 
         h["marca"] = destino_marca
         if (nuevo_tipo is not None) and nuevo_tipo.strip() != "":
@@ -351,6 +386,9 @@ class InventarioHilos:
         if (nuevo_proveedor is not None) and nuevo_proveedor.strip() != "":
             h["proveedor"] = nuevo_proveedor.strip()
 
+        # Después: actualizar hash (puede cambiar la marca)
+        self._rebuild_hash_index()
+
         # Ordenar/guardar
         self.inventario = self.ordenar_por_codigo_color(self.inventario)
         self.inventario = self.ordenar_por_marca_con_menos_stock(self.inventario)
@@ -365,6 +403,12 @@ class InventarioHilos:
         if h["cantidad"] != 0:
             return False, "No se puede eliminar: aún hay unidades."
         self.inventario.remove(h)
+
+        # Actualizar hash
+        clave = (h["marca"].lower(), str(h["codigo_color"]))
+        if clave in self.hash_index:
+            del self.hash_index[clave]
+
         self.guardar_todo()
         return True, "Hilo eliminado."
 
@@ -376,14 +420,16 @@ class InventarioHilos:
             return False, "Cantidad inválida."
 
         h["cantidad"] += cantidad
-        self.historial_compras.append({
-            "codigo_color": str(codigo_color),
-            "marca": h["marca"],
-            "descripcion": h["descripcion"],
-            "cantidad": cantidad,
-            "costo_unitario": costo_unitario,
-            "total": round(cantidad * costo_unitario, 2)
-        })
+        self.historial_compras.append(
+            {
+                "codigo_color": str(codigo_color),
+                "marca": h["marca"],
+                "descripcion": h["descripcion"],
+                "cantidad": cantidad,
+                "costo_unitario": costo_unitario,
+                "total": round(cantidad * costo_unitario, 2),
+            }
+        )
         self.avisar_stock_bajo_gui(h)
 
         # Ordenar/guardar
@@ -404,13 +450,15 @@ class InventarioHilos:
 
         h["cantidad"] -= cantidad
         total = round(cantidad * h["precio_unitario"], 2)
-        self.historial_ventas.append({
-            "codigo_color": str(codigo_color),
-            "marca": h["marca"],
-            "descripcion": h["descripcion"],
-            "cantidad": cantidad,
-            "total": total
-        })
+        self.historial_ventas.append(
+            {
+                "codigo_color": str(codigo_color),
+                "marca": h["marca"],
+                "descripcion": h["descripcion"],
+                "cantidad": cantidad,
+                "total": total,
+            }
+        )
         self.avisar_stock_bajo_gui(h)
 
         # Ordenar/guardar
@@ -430,8 +478,8 @@ class InventarioHilos:
     def reporte_compras(self):
         return list(self.historial_compras)
 
-    # ORDENAMIENTOS
-    def ordenar_por_codigo_color(self, inventario):
+    # ---- ORDENAMIENTOS ----
+    def ordenar_por_codigo_color(self, inventario):  # QuickSort por código dentro de cada marca
         if not inventario:
             return inventario
 
@@ -446,7 +494,7 @@ class InventarioHilos:
             inventario_ordenado.extend(lista_ordenada)
         return inventario_ordenado
 
-    def _quick_sort_codigo(self, lista):
+    def _quick_sort_codigo(self, lista):  # QuickSort
         if len(lista) <= 1:
             return lista
         pivote = lista[len(lista) // 2]
@@ -468,11 +516,9 @@ class InventarioHilos:
             else:
                 mayores.append(x)
 
-        return (self._quick_sort_codigo(menores) +
-                iguales +
-                self._quick_sort_codigo(mayores))
+        return self._quick_sort_codigo(menores) + iguales + self._quick_sort_codigo(mayores)
 
-    def ordenar_por_marca_con_menos_stock(self, inventario):
+    def ordenar_por_marca_con_menos_stock(self, inventario):  # Selection sort por stock total de marca (asc)
         resumen = {}
         for hilo in inventario:
             marca = hilo["marca"]
@@ -494,7 +540,7 @@ class InventarioHilos:
 
         return lista_aux
 
-    def ordenar_por_tipo(self, inventario):
+    def ordenar_por_tipo(self, inventario):  # Shell Sort por descripción (tipo)
         lista_ordenada = inventario[:]
         n = len(lista_ordenada)
         gap = n // 2
@@ -502,14 +548,16 @@ class InventarioHilos:
             for i in range(gap, n):
                 temp = lista_ordenada[i]
                 j = i
-                while j >= gap and lista_ordenada[j - gap]["descripcion"].lower() > temp["descripcion"].lower():
+                while (
+                    j >= gap
+                    and lista_ordenada[j - gap]["descripcion"].lower() > temp["descripcion"].lower()
+                ):
                     lista_ordenada[j] = lista_ordenada[j - gap]
                     j -= gap
                 lista_ordenada[j] = temp
             gap //= 2
         return lista_ordenada
-
-
+    
 # SISTEMA (usuarios + sesión)
 class SistemaDeInventario:
     def __init__(self, archivo_excel=NOMBRE_ARCHIVO, permitir_venta_empleado=PERMITIR_VENTA_EMPLEADO):
@@ -524,8 +572,7 @@ class SistemaDeInventario:
         self.usuario_actual = None  # dict con usuario y rol
 
     def _cargar_usuarios(self):
-        return [{"usuario": f[0], "password": f[1], "rol": str(f[2]).lower()}
-                for f in self.excel.cargar_hoja(HOJA_USUARIOS)]
+        return [{"usuario": f[0], "password": f[1], "rol": str(f[2]).lower()} for f in self.excel.cargar_hoja(HOJA_USUARIOS)]
 
     def validar_credenciales(self, usr, pwd):
         for u in self.usuarios:
@@ -559,7 +606,7 @@ class AppGUI:
         self.root.title("Tienda de Hilos Arcoíris")
         try:
             self.root.state("zoomed")
-        except:
+        except Exception:
             self.root.geometry("1200x700")
 
         # Frames
@@ -584,17 +631,102 @@ class AppGUI:
         lbl.pack(pady=15)
         return encabezado
 
-    def row_entry(self, parent, etiqueta, var: ctk.StringVar, width=280):
+    def row_entry(self, parent, etiqueta, var: ctk.StringVar, width=280, **kwargs):
         cont = ctk.CTkFrame(parent, fg_color="transparent")
         cont.pack(pady=8)
         lbl = ctk.CTkLabel(cont, text=etiqueta, font=("Arial", 16))
         lbl.pack(side="left", padx=10)
-        ent = ctk.CTkEntry(cont, textvariable=var, width=width, height=35)
+        ent = ctk.CTkEntry(cont, textvariable=var, width=width, height=35, **kwargs)
         ent.pack(side="left")
         return ent
 
     def boton_volver(self, parent, destino):
         ctk.CTkButton(parent, text="↩ Volver", command=destino, width=250, height=40).pack(pady=10)
+
+    # ---------- NUEVOS HELPERS: Lote/Tabla ----------
+    def _init_tabla_lote(self, columns):
+        """
+        Crea una tabla (Treeview) para mostrar operaciones en lote con columnas dinámicas.
+        columns: lista de tuplas (id_col, header, width, anchor)
+        """
+        self.lote = []  # cada item: {"accion": str, "datos": dict}
+        frame_tabla = ctk.CTkFrame(self.frame_actual)
+        frame_tabla.pack(fill="both", expand=True, padx=20, pady=20)
+
+        col_ids = [c[0] for c in columns]
+        self.tabla = ttk.Treeview(frame_tabla, columns=tuple(col_ids), show="headings", height=12)
+        for cid, header, width, anchor in columns:
+            self.tabla.heading(cid, text=header)
+            self.tabla.column(cid, width=width, anchor=anchor)
+
+        sb = ttk.Scrollbar(frame_tabla, orient="vertical", command=self.tabla.yview)
+        self.tabla.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.tabla.pack(fill="both", expand=True)
+
+    def _tabla_clear(self):
+        if hasattr(self, "tabla") and self.tabla:
+            self.tabla.delete(*self.tabla.get_children())
+
+    def _tabla_add(self, values_tuple):
+        if hasattr(self, "tabla") and self.tabla:
+            self.tabla.insert("", "end", values=values_tuple)
+
+    def _confirmar_lote(self):
+        """
+        Ejecuta el lote: intenta todo lo posible y reporta aciertos/errores.
+        Muestra detalles, incluyendo el TOTAL de cada venta registrada.
+        """
+        if not getattr(self, "lote", None):
+            messagebox.showinfo("Lote vacío", "No hay operaciones para confirmar.")
+            return
+
+        exitos = 0
+        detalles = []   # log de cada operación (éxito y error)
+
+        for op in self.lote:
+            accion = op["accion"]
+            d = op["datos"]
+            try:
+                if accion == "registrar_hilo":
+                    ok, msg = self.sys.inventario.registrar_hilo_gui(
+                        d["marca"], d["tipo"], d["codigo"], d["cantidad"], d["precio"], d["proveedor"]
+                    )
+                elif accion == "modificar_hilo":
+                    ok, msg = self.sys.inventario.modificar_hilo_gui(
+                        d["marca"],
+                        d["codigo"],
+                        nueva_marca=d.get("nueva_marca"),
+                        nuevo_tipo=d.get("nuevo_tipo"),
+                        nueva_cantidad=d.get("nueva_cantidad"),
+                        nuevo_precio=d.get("nuevo_precio"),
+                        nuevo_proveedor=d.get("nuevo_proveedor"),
+                    )
+                elif accion == "compra":
+                    ok, msg = self.sys.inventario.registrar_compra_gui(d["marca"], d["codigo"], d["cantidad"], d["costo"])
+                elif accion == "venta":
+                    ok, msg = self.sys.inventario.registrar_venta_gui(d["marca"], d["codigo"], d["cantidad"])
+                else:
+                    ok, msg = False, f"Acción desconocida: {accion}"
+
+                if ok:
+                    exitos += 1
+                    # Guardar detalles de éxito (incluye total en caso de venta)
+                    detalles.append(f"{accion}: {msg}")
+                else:
+                    detalles.append(f"{accion}: {msg}")
+            except Exception as e:
+                detalles.append(f"{accion}: {e}")
+
+        resumen = f"Operaciones exitosas: {exitos}\n\n"
+        if detalles:
+            resumen += "Detalles:\n- " + "\n- ".join(detalles)
+
+        messagebox.showinfo("Resultado del lote", resumen)
+
+        # Limpiar lote y tabla
+        self.lote = []
+        self._tabla_clear()
 
     # ---------- Pantallas ----------
     def _build_login(self):
@@ -609,7 +741,8 @@ class AppGUI:
         v_user = ctk.StringVar()
         v_pass = ctk.StringVar()
         self.row_entry(login_frame, "Usuario", v_user)
-        self.row_entry(login_frame, "Contraseña", v_pass)
+        # Para ocultar contraseña, puedes usar: show="*"
+        self.row_entry(login_frame, "Contraseña", v_pass)  # show="*"
 
         def hacer_login():
             usr = v_user.get().strip()
@@ -629,32 +762,37 @@ class AppGUI:
         self.header(self.frame_actual)
 
         tipo = "ADMINISTRADOR" if self.sys.usuario_actual["rol"] == "admin" else "EMPLEADO"
-        ctk.CTkLabel(self.frame_actual, text=f"Usuario: {self.sys.usuario_actual['usuario']}  |  Rol: {tipo}",
-                     font=("Arial", 16, "italic"), text_color="lightblue").pack(pady=(12, 2))
+        ctk.CTkLabel(
+            self.frame_actual,
+            text=f"Usuario: {self.sys.usuario_actual['usuario']}  |  Rol: {tipo}",
+            font=("Arial", 16, "italic"),
+            text_color="lightblue",
+        ).pack(pady=(12, 2))
 
         ctk.CTkLabel(self.frame_actual, text="MENÚ PRINCIPAL", font=("Arial", 26, "bold")).pack(pady=10)
 
-        # Opciones según rol
-        opciones = []
+        # Opciones según rol (ambos incluyen Búsqueda profunda (Hashing))
         if self.sys.usuario_actual["rol"] == "admin":
             opciones = [
                 ("Registrar nuevo hilo", self.ui_registrar_hilo),
                 ("Buscar hilo", self.ui_buscar_hilo),
+                ("Búsqueda profunda (Hashing)", self.ui_busqueda_hash),
                 ("Modificar información", self.ui_modificar_hilo),
                 ("Eliminar hilo", self.ui_eliminar_hilo),
                 ("Registrar compra / reabastecimiento", self.ui_registrar_compra),
                 ("Registrar venta", self.ui_registrar_venta),
                 ("Reportes y consultas", self.ui_reportes),
                 ("Mostrar inventario completo", self.ui_inventario),
-                ("Cerrar sesión y salir", self.on_close)
+                ("Cerrar sesión y salir", self.on_close),
             ]
         else:
             opciones = [
-                ("Buscar hilo", self.ui_buscar_hilo),
                 ("Registrar venta", self.ui_registrar_venta if PERMITIR_VENTA_EMPLEADO else self._no_permitido),
+                ("Buscar hilo", self.ui_buscar_hilo),
+                ("Búsqueda profunda (Hashing)", self.ui_busqueda_hash),
                 ("Reportes y consultas", self.ui_reportes),
                 ("Mostrar inventario completo", self.ui_inventario),
-                ("Cerrar sesión y salir", self.on_close)
+                ("Cerrar sesión y salir", self.on_close),
             ]
 
         botones = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
@@ -662,8 +800,9 @@ class AppGUI:
         for texto, cmd in opciones:
             ctk.CTkButton(botones, text=texto, command=cmd, width=420, height=42, font=("Arial", 16)).pack(pady=7)
 
-        ctk.CTkButton(self.frame_actual, text="↩ Cerrar sesión", fg_color="#444", hover_color="#666",
-                      command=self._logout, width=280, height=38).pack(pady=10)
+        ctk.CTkButton(
+            self.frame_actual, text="↩ Cerrar sesión", fg_color="#444", hover_color="#666", command=self._logout, width=280, height=38
+        ).pack(pady=10)
 
     def _logout(self):
         self.sys.cerrar_sesion()
@@ -672,15 +811,82 @@ class AppGUI:
     def _no_permitido(self):
         messagebox.showwarning("Restringido", "Ventas solo permitidas al administrador.")
 
-    # ---------- Subpantallas ----------
+    # ---------- Subpantalla: Búsqueda Profunda (Hashing) ----------
+    def ui_busqueda_hash(self):
+        self.clear_frame()
+        self.header(self.frame_actual, "Búsqueda Profunda (Hashing)")
+
+        form = ctk.CTkFrame(self.frame_actual)
+        form.pack(pady=20)
+
+        v_marca = ctk.StringVar()
+        v_codigo = ctk.StringVar()
+
+        self.row_entry(form, "Marca", v_marca)
+        self.row_entry(form, "Código de color", v_codigo)
+
+        frame_tabla = ctk.CTkFrame(self.frame_actual)
+        frame_tabla.pack(fill="both", expand=True, padx=20, pady=20)
+
+        columnas = ("ID", "Marca", "Código", "Tipo", "Cantidad", "Precio", "Proveedor")
+        tabla = ttk.Treeview(frame_tabla, columns=columnas, show="headings", height=10)
+
+        for col in columnas:
+            tabla.heading(col, text=col)
+            tabla.column(col, width=120, anchor="center")
+
+        tabla.column("ID", width=70)
+        tabla.column("Cantidad", width=80)
+        tabla.column("Precio", width=100)
+
+        sb = ttk.Scrollbar(frame_tabla, orient="vertical", command=tabla.yview)
+        tabla.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tabla.pack(fill="both", expand=True)
+
+        def buscar_hash():
+            marca = v_marca.get().strip()
+            codigo = v_codigo.get().strip()
+
+            if marca == "" or codigo == "":
+                messagebox.showwarning("Atención", "Debes ingresar marca y código.")
+                return
+
+            tabla.delete(*tabla.get_children())
+
+            res = self.sys.inventario.buscar_hash(marca, codigo)
+            if res is None:
+                messagebox.showinfo("Sin resultados", "No se encontró el hilo usando hashing.")
+                return
+
+            tabla.insert(
+                "",
+                "end",
+                values=(
+                    res["id"],
+                    res["marca"],
+                    res["codigo_color"],
+                    res["descripcion"],
+                    res["cantidad"],
+                    f"{res['precio_unitario']:.2f}",
+                    res["proveedor"],
+                ),
+            )
+
+        ctk.CTkButton(form, text="Buscar (hashing)", command=buscar_hash, width=200, height=40).pack(pady=20)
+
+        self.boton_volver(self.frame_actual, self._build_menu)
+
+    # ---------- Subpantallas (con tablas + lote) ----------
     def ui_registrar_hilo(self):
         self.clear_frame()
-        self.header(self.frame_actual, "Registrar nuevo hilo")
+        self.header(self.frame_actual, "Registrar nuevo hilo (Lote)")
+
         form = ctk.CTkFrame(self.frame_actual)
         form.pack(pady=10)
 
         v_marca = ctk.StringVar()
-        v_tipo = ctk.StringVar()          # se guarda en Excel como "Descripción"
+        v_tipo = ctk.StringVar()
         v_codigo = ctk.StringVar()
         v_cantidad = ctk.StringVar()
         v_precio = ctk.StringVar()
@@ -693,72 +899,193 @@ class AppGUI:
         self.row_entry(form, "Precio por unidad", v_precio)
         self.row_entry(form, "Proveedor", v_proveedor)
 
-        def confirmar():
-            datos = { "Marca": v_marca.get().strip(),
-                      "Tipo": v_tipo.get().strip(),
-                      "Código": v_codigo.get().strip(),
-                      "Cantidad": v_cantidad.get().strip(),
-                      "Precio": v_precio.get().strip(),
-                      "Proveedor": v_proveedor.get().strip() }
+        cols = [
+            ("marca", "Marca", 120, "w"),
+            ("codigo", "Código", 90, "center"),
+            ("tipo", "Tipo", 160, "w"),
+            ("cantidad", "Cantidad", 80, "center"),
+            ("precio", "Precio (Q)", 100, "e"),
+            ("proveedor", "Proveedor", 160, "w"),
+        ]
+        self._init_tabla_lote(cols)
+
+        def agregar_lote():
+            datos = {
+                "marca": v_marca.get().strip(),
+                "tipo": v_tipo.get().strip(),
+                "codigo": v_codigo.get().strip(),
+                "cantidad": v_cantidad.get().strip(),
+                "precio": v_precio.get().strip(),
+                "proveedor": v_proveedor.get().strip(),
+            }
 
             if any(v == "" for v in datos.values()):
                 messagebox.showwarning("Atención", "Por favor llena todos los campos.")
                 return
 
-            n_cant = Utilidades.leer_entero_str(datos["Cantidad"], minimo=0)
-            n_prec = Utilidades.leer_float_str(datos["Precio"], minimo=0.0)
+            n_cant = Utilidades.leer_entero_str(datos["cantidad"], minimo=0)
+            n_prec = Utilidades.leer_float_str(datos["precio"], minimo=0.0)
             if n_cant is None or n_prec is None:
                 messagebox.showwarning("Atención", "Cantidad o precio inválido.")
                 return
 
-            ok, msg = self.sys.inventario.registrar_hilo_gui(
-                datos["Marca"], datos["Tipo"], datos["Código"], n_cant, n_prec, datos["Proveedor"]
-            )
-            if ok:
-                messagebox.showinfo("Éxito", msg)
-                self._build_menu()
-            else:
-                messagebox.showwarning("Atención", msg)
+            # Evitar duplicado en lote por (marca, codigo)
+            clave = (datos["marca"].lower(), datos["codigo"])
+            for op in self.lote:
+                if op["accion"] == "registrar_hilo":
+                    d = op["datos"]
+                    if (d["marca"].lower(), d["codigo"]) == clave:
+                        messagebox.showwarning("Duplicado en lote", "Ya agregaste este Código para esa Marca en el lote.")
+                        return
 
-        ctk.CTkButton(form, text="Guardar hilo", command=confirmar, width=260, height=42).pack(pady=15)
+            self.lote.append(
+                {
+                    "accion": "registrar_hilo",
+                    "datos": {
+                        "marca": datos["marca"],
+                        "tipo": datos["tipo"],
+                        "codigo": datos["codigo"],
+                        "cantidad": n_cant,
+                        "precio": n_prec,
+                        "proveedor": datos["proveedor"],
+                    },
+                }
+            )
+
+            self._tabla_add((datos["marca"], datos["codigo"], datos["tipo"], n_cant, f"{n_prec:.2f}", datos["proveedor"]))
+
+            # Limpiar inputs
+            v_tipo.set("")
+            v_codigo.set("")
+            v_cantidad.set("")
+            v_precio.set("")
+            v_proveedor.set("")
+
+        btns = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        btns.pack(pady=8)
+        ctk.CTkButton(btns, text="Agregar a lote", command=agregar_lote, width=200).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Confirmar lote y registrar todo", command=self._confirmar_lote, width=280).pack(
+            side="left", padx=6
+        )
+
         self.boton_volver(self.frame_actual, self._build_menu)
 
     def ui_buscar_hilo(self):
         self.clear_frame()
-        self.header(self.frame_actual, "Buscar Hilo")
+        self.header(self.frame_actual, "Buscar Hilo (Por Marca y por Código)")
+
+        # --- FORMULARIO ---
         form = ctk.CTkFrame(self.frame_actual)
         form.pack(pady=10)
 
         v_marca = ctk.StringVar()
         v_codigo = ctk.StringVar()
+
         self.row_entry(form, "Marca", v_marca)
-        self.row_entry(form, "Código de color", v_codigo)
 
-        result_box = ctk.CTkTextbox(self.frame_actual, width=900, height=220)
-        result_box.pack(pady=10)
+        # --- Tabla creada ANTES de las funciones ---
+        frame_tabla = ctk.CTkFrame(self.frame_actual)
+        frame_tabla.pack(fill="both", expand=True, padx=20, pady=20)
 
-        def buscar():
+        columnas = ("ID", "Marca", "Código", "Tipo", "Cantidad", "Precio", "Proveedor")
+        tabla = ttk.Treeview(frame_tabla, columns=columnas, show="headings", height=12)
+
+        for col in columnas:
+            tabla.heading(col, text=col)
+            tabla.column(col, width=120, anchor="center")
+        tabla.column("ID", width=60)
+        tabla.column("Cantidad", width=80)
+        tabla.column("Precio", width=100)
+
+        scrollbar = ttk.Scrollbar(frame_tabla, orient="vertical", command=tabla.yview)
+        tabla.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        tabla.pack(fill="both", expand=True)
+
+        #    FUNCIONES INTERNAS
+        # Campo Código
+        entry_codigo = self.row_entry(form, "Código de color", v_codigo)
+        entry_codigo.configure(state="disabled")
+
+        # Botón Buscar por Código
+        btn_buscar_codigo = ctk.CTkButton(form, text="Buscar por código", width=200, height=40)
+        btn_buscar_codigo.pack(pady=12)
+        btn_buscar_codigo.configure(state="disabled")
+
+        def buscar_por_marca():
+            marca = v_marca.get().strip()
+            if marca == "":
+                messagebox.showwarning("Atención", "Ingrese una marca.")
+                return
+
+            tabla.delete(*tabla.get_children())
+
+            encontrados = [
+                h for h in self.sys.inventario.reporte_inventario() if h["marca"].lower() == marca.lower()
+            ]
+
+            if not encontrados:
+                messagebox.showinfo("Sin resultados", "No se encontraron hilos para esta marca.")
+                entry_codigo.configure(state="disabled")
+                btn_buscar_codigo.configure(state="disabled")
+                return
+
+            for h in encontrados:
+                tabla.insert(
+                    "", "end",
+                    values=(
+                        h["id"],
+                        h["marca"],
+                        h["codigo_color"],
+                        h["descripcion"],
+                        h["cantidad"],
+                        f"{h['precio_unitario']:.2f}",
+                        h["proveedor"],
+                    ),
+                )
+
+            entry_codigo.configure(state="normal")
+            btn_buscar_codigo.configure(state="normal")
+
+        ctk.CTkButton(
+            form, text="Mostrar inventario de la marca", width=280, height=40, command=buscar_por_marca
+        ).pack(pady=10)
+
+        def buscar_por_codigo():
             marca = v_marca.get().strip()
             codigo = v_codigo.get().strip()
-            if marca == "" or codigo == "":
-                messagebox.showwarning("Atención", "Llene Marca y Código.")
-                return
-            h = self.sys.inventario.obtener_por_marca_codigo(marca, codigo)
-            result_box.delete("1.0", "end")
-            if h:
-                result_box.insert("end",
-                    f"ID: {h['id']}\nMarca: {h['marca']}\nCódigo: {h['codigo_color']}\n"
-                    f"Tipo: {h['descripcion']}\nCantidad: {h['cantidad']}\n"
-                    f"Precio: Q{h['precio_unitario']:.2f}\nProveedor: {h['proveedor']}\n")
-            else:
-                result_box.insert("end", "No se encontró el hilo.")
 
-        ctk.CTkButton(form, text="Buscar", command=buscar, width=220, height=40).pack(pady=12)
+            if codigo == "":
+                messagebox.showwarning("Atención", "Ingrese el código de color.")
+                return
+
+            tabla.delete(*tabla.get_children())
+
+            h = self.sys.inventario.obtener_por_marca_codigo(marca, codigo)
+            if h:
+                tabla.insert(
+                    "", "end",
+                    values=(
+                        h["id"],
+                        h["marca"],
+                        h["codigo_color"],
+                        h["descripcion"],
+                        h["cantidad"],
+                        f"{h['precio_unitario']:.2f}",
+                        h["proveedor"],
+                    ),
+                )
+            else:
+                messagebox.showinfo("Sin resultados", "No se encontró ese código para esta marca.")
+
+        btn_buscar_codigo.configure(command=buscar_por_codigo)
+
         self.boton_volver(self.frame_actual, self._build_menu)
 
     def ui_modificar_hilo(self):
         self.clear_frame()
-        self.header(self.frame_actual, "Modificar Hilo")
+        self.header(self.frame_actual, "Modificar Hilo (Lote)")
+
         form = ctk.CTkFrame(self.frame_actual)
         form.pack(pady=10)
 
@@ -778,28 +1105,74 @@ class AppGUI:
         self.row_entry(form, "Nuevo precio (opcional)", v_nuevo_precio)
         self.row_entry(form, "Nuevo proveedor (opcional)", v_nuevo_prov)
 
-        def confirmar():
+        cols = [
+            ("marca", "Marca (act.)", 120, "w"),
+            ("codigo", "Código (act.)", 100, "center"),
+            ("nmarca", "Nueva Marca", 120, "w"),
+            ("ntipo", "Nuevo Tipo", 140, "w"),
+            ("ncant", "Nueva Cant.", 100, "center"),
+            ("nprec", "Nuevo Precio", 110, "e"),
+            ("nprov", "Nuevo Proveedor", 150, "w"),
+        ]
+        self._init_tabla_lote(cols)
+
+        def agregar_lote():
             m = v_marca.get().strip()
             c = v_codigo.get().strip()
             if m == "" or c == "":
                 messagebox.showwarning("Atención", "Marca y Código actuales son obligatorios.")
                 return
 
-            ok, msg = self.sys.inventario.modificar_hilo_gui(
-                m, c,
-                nueva_marca=v_nueva_marca.get(),
-                nuevo_tipo=v_nuevo_tipo.get(),
-                nueva_cantidad=v_nueva_cantidad.get(),
-                nuevo_precio=v_nuevo_precio.get(),
-                nuevo_proveedor=v_nuevo_prov.get()
-            )
-            if ok:
-                messagebox.showinfo("Éxito", msg)
-                self._build_menu()
-            else:
-                messagebox.showwarning("Atención", msg)
+            nc = v_nueva_cantidad.get().strip()
+            np = v_nuevo_precio.get().strip()
+            val_nc = None if nc == "" else Utilidades.leer_entero_str(nc, minimo=0)
+            val_np = None if np == "" else Utilidades.leer_float_str(np, minimo=0.0)
+            if nc != "" and val_nc is None:
+                messagebox.showwarning("Atención", "Nueva cantidad inválida.")
+                return
+            if np != "" and val_np is None:
+                messagebox.showwarning("Atención", "Nuevo precio inválido.")
+                return
 
-        ctk.CTkButton(form, text="Guardar cambios", command=confirmar, width=260, height=42).pack(pady=15)
+            datos = {
+                "marca": m,
+                "codigo": c,
+                "nueva_marca": v_nueva_marca.get().strip() or None,
+                "nuevo_tipo": v_nuevo_tipo.get().strip() or None,
+                "nueva_cantidad": None if nc == "" else nc,
+                "nuevo_precio": None if np == "" else np,
+                "nuevo_proveedor": v_nuevo_prov.get().strip() or None,
+            }
+
+            self.lote.append({"accion": "modificar_hilo", "datos": datos})
+            self._tabla_add(
+                (
+                    datos["marca"],
+                    datos["codigo"],
+                    datos["nueva_marca"] or "",
+                    datos["nuevo_tipo"] or "",
+                    datos["nueva_cantidad"] or "",
+                    datos["nuevo_precio"] or "",
+                    datos["nuevo_proveedor"] or "",
+                )
+            )
+
+            # Limpiar inputs opcionales
+            v_nueva_marca.set("")
+            v_nuevo_tipo.set("")
+            v_nueva_cantidad.set("")
+            v_nuevo_precio.set("")
+            v_nuevo_prov.set("")
+
+        btns = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        btns.pack(pady=8)
+        ctk.CTkButton(btns, text="Agregar modificación al lote", command=agregar_lote, width=260).pack(
+            side="left", padx=6
+        )
+        ctk.CTkButton(btns, text="Confirmar lote y aplicar cambios", command=self._confirmar_lote, width=280).pack(
+            side="left", padx=6
+        )
+
         self.boton_volver(self.frame_actual, self._build_menu)
 
     def ui_eliminar_hilo(self):
@@ -826,7 +1199,8 @@ class AppGUI:
 
     def ui_registrar_compra(self):
         self.clear_frame()
-        self.header(self.frame_actual, "Registrar Compra / Reabastecimiento")
+        self.header(self.frame_actual, "Registrar Compra / Reabastecimiento (Lote)")
+
         form = ctk.CTkFrame(self.frame_actual)
         form.pack(pady=10)
 
@@ -840,27 +1214,39 @@ class AppGUI:
         self.row_entry(form, "Cantidad comprada", v_cantidad)
         self.row_entry(form, "Costo por unidad", v_costo)
 
-        def confirmar():
+        cols = [("marca", "Marca", 120, "w"), ("codigo", "Código", 90, "center"), ("cantidad", "Cantidad", 90, "center"), ("costo", "Costo (Q)", 100, "e")]
+        self._init_tabla_lote(cols)
+
+        def agregar_lote():
             m = v_marca.get().strip()
             c = v_codigo.get().strip()
             cant = Utilidades.leer_entero_str(v_cantidad.get().strip(), minimo=1)
             costo = Utilidades.leer_float_str(v_costo.get().strip(), minimo=0.0)
+
             if any(x in (None, "") for x in [m, c, cant, costo]):
                 messagebox.showwarning("Atención", "Complete los datos correctamente.")
                 return
-            ok, msg = self.sys.inventario.registrar_compra_gui(m, c, cant, costo)
-            if ok:
-                messagebox.showinfo("Éxito", msg)
-                self._build_menu()
-            else:
-                messagebox.showwarning("Atención", msg)
 
-        ctk.CTkButton(form, text="Registrar compra", command=confirmar, width=240, height=40).pack(pady=12)
+            self.lote.append({"accion": "compra", "datos": {"marca": m, "codigo": c, "cantidad": cant, "costo": costo}})
+            self._tabla_add((m, c, cant, f"{costo:.2f}"))
+
+            v_codigo.set("")
+            v_cantidad.set("")
+            v_costo.set("")
+
+        btns = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        btns.pack(pady=8)
+        ctk.CTkButton(btns, text="Agregar compra al lote", command=agregar_lote, width=240).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Confirmar lote y registrar compras", command=self._confirmar_lote, width=280).pack(
+            side="left", padx=6
+        )
+
         self.boton_volver(self.frame_actual, self._build_menu)
 
     def ui_registrar_venta(self):
         self.clear_frame()
-        self.header(self.frame_actual, "Registrar Venta")
+        self.header(self.frame_actual, "Registrar Venta (Lote)")
+
         form = ctk.CTkFrame(self.frame_actual)
         form.pack(pady=10)
 
@@ -872,67 +1258,105 @@ class AppGUI:
         self.row_entry(form, "Código de color", v_codigo)
         self.row_entry(form, "Cantidad vendida", v_cantidad)
 
-        def confirmar():
+        cols = [("marca", "Marca", 120, "w"), ("codigo", "Código", 90, "center"), ("cantidad", "Cantidad", 90, "center")]
+        self._init_tabla_lote(cols)
+
+        def agregar_lote():
             m = v_marca.get().strip()
             c = v_codigo.get().strip()
             cant = Utilidades.leer_entero_str(v_cantidad.get().strip(), minimo=1)
             if any(x in (None, "") for x in [m, c, cant]):
                 messagebox.showwarning("Atención", "Complete los datos correctamente.")
                 return
-            ok, msg = self.sys.inventario.registrar_venta_gui(m, c, cant)
-            if ok:
-                messagebox.showinfo("Éxito", msg)
-                self._build_menu()
-            else:
-                messagebox.showwarning("Atención", msg)
 
-        ctk.CTkButton(form, text="Registrar venta", command=confirmar, width=240, height=40).pack(pady=12)
+            self.lote.append({"accion": "venta", "datos": {"marca": m, "codigo": c, "cantidad": cant}})
+            self._tabla_add((m, c, cant))
+
+            v_codigo.set("")
+            v_cantidad.set("")
+
+        btns = ctk.CTkFrame(self.frame_actual, fg_color="transparent")
+        btns.pack(pady=8)
+        ctk.CTkButton(btns, text="Agregar venta al lote", command=agregar_lote, width=220).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Confirmar lote y registrar ventas", command=self._confirmar_lote, width=280).pack(
+            side="left", padx=6
+        )
+
         self.boton_volver(self.frame_actual, self._build_menu)
 
     def ui_reportes(self):
         self.clear_frame()
         self.header(self.frame_actual, "Reportes y Consultas")
+
         cont = ctk.CTkFrame(self.frame_actual)
         cont.pack(pady=10)
 
-        # Botones de reporte
-        btns = ctk.CTkFrame(cont, fg_color="transparent")
-        btns.pack(pady=6)
-        out = ctk.CTkTextbox(self.frame_actual, width=1000, height=350)
-        out.pack(pady=10)
+        frame_tabla = ctk.CTkFrame(self.frame_actual)
+        frame_tabla.pack(fill="both", expand=True, padx=20, pady=20)
+
+        columnas = ("Col1", "Col2", "Col3", "Col4", "Col5", "Col6")
+        tabla = ttk.Treeview(frame_tabla, columns=columnas, show="headings", height=15)
+        for col in columnas:
+            tabla.heading(col, text=col)
+            tabla.column(col, width=150, anchor="center")
+        scrollbar = ttk.Scrollbar(frame_tabla, orient="vertical", command=tabla.yview)
+        tabla.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        tabla.pack(fill="both", expand=True)
 
         def rep_inv():
-            out.delete("1.0", "end")
+            tabla.delete(*tabla.get_children())
+            tabla.heading("Col1", text="ID")
+            tabla.heading("Col2", text="Marca")
+            tabla.heading("Col3", text="Código")
+            tabla.heading("Col4", text="Tipo")
+            tabla.heading("Col5", text="Cantidad")
+            tabla.heading("Col6", text="Precio (Q)")
+
             data = self.sys.inventario.reporte_inventario()
-            if not data:
-                out.insert("end", "No hay hilos registrados.\n")
-                return
             for h in data:
-                out.insert("end", f"ID:{h['id']} | Marca:{h['marca']} | Código:{h['codigo_color']} | "
-                                  f"Tipo:{h['descripcion']} | Cant:{h['cantidad']} | "
-                                  f"Precio:Q{h['precio_unitario']:.2f} | Prov:{h['proveedor']}\n")
+                tabla.insert(
+                    "",
+                    "end",
+                    values=(h["id"], h["marca"], h["codigo_color"], h["descripcion"], h["cantidad"], f"{h['precio_unitario']:.2f}"),
+                )
 
         def rep_ven():
-            out.delete("1.0", "end")
+            tabla.delete(*tabla.get_children())
+            tabla.heading("Col1", text="Marca")
+            tabla.heading("Col2", text="Código")
+            tabla.heading("Col3", text="Tipo")
+            tabla.heading("Col4", text="Cantidad")
+            tabla.heading("Col5", text="Total (Q)")
+            tabla.heading("Col6", text="")
+
             data = self.sys.inventario.reporte_ventas()
-            if not data:
-                out.insert("end", "Aún no hay ventas.\n")
-                return
             for v in data:
-                out.insert("end", f"{v['marca']} | {v['codigo_color']} | {v['descripcion']} | "
-                                  f"{v['cantidad']} | Total Q{v['total']:.2f}\n")
+                tabla.insert(
+                    "",
+                    "end",
+                    values=(v["marca"], v["codigo_color"], v["descripcion"], v["cantidad"], f"{v['total']:.2f}", ""),
+                )
 
         def rep_com():
-            out.delete("1.0", "end")
-            data = self.sys.inventario.reporte_compras()
-            if not data:
-                out.insert("end", "Aún no hay compras.\n")
-                return
-            for c in data:
-                out.insert("end", f"{c['marca']} | {c['codigo_color']} | {c['descripcion']} | "
-                                  f"{c['cantidad']} | Costo Q{c['costo_unitario']:.2f} | "
-                                  f"Total Q{c['total']:.2f}\n")
+            tabla.delete(*tabla.get_children())
+            tabla.heading("Col1", text="Marca")
+            tabla.heading("Col2", text="Código")
+            tabla.heading("Col3", text="Tipo")
+            tabla.heading("Col4", text="Cantidad")
+            tabla.heading("Col5", text="Costo (Q)")
+            tabla.heading("Col6", text="Total (Q)")
 
+            data = self.sys.inventario.reporte_compras()
+            for c in data:
+                tabla.insert(
+                    "",
+                    "end",
+                    values=(c["marca"], c["codigo_color"], c["descripcion"], c["cantidad"], f"{c['costo_unitario']:.2f}", f"{c['total']:.2f}"),
+                )
+
+        btns = ctk.CTkFrame(cont, fg_color="transparent")
+        btns.pack(pady=6)
         ctk.CTkButton(btns, text="Inventario", command=rep_inv, width=180, height=34).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="Historial Ventas", command=rep_ven, width=180, height=34).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="Historial Compras", command=rep_com, width=180, height=34).pack(side="left", padx=6)
@@ -943,19 +1367,32 @@ class AppGUI:
         self.clear_frame()
         self.header(self.frame_actual, "Inventario Completo")
 
-        out = ctk.CTkTextbox(self.frame_actual, width=1100, height=460)
-        out.pack(pady=10)
+        frame_tabla = ctk.CTkFrame(self.frame_actual)
+        frame_tabla.pack(fill="both", expand=True, padx=20, pady=20)
+
+        columnas = ("ID", "Marca", "Código", "Tipo", "Cantidad", "Precio", "Proveedor")
+        tabla = ttk.Treeview(frame_tabla, columns=columnas, show="headings", height=20)
+
+        for col in columnas:
+            tabla.heading(col, text=col)
+            tabla.column(col, width=120, anchor="center")
+
+        tabla.column("ID", width=50)
+        tabla.column("Cantidad", width=80)
+        tabla.column("Precio", width=100)
+
+        scrollbar_y = ttk.Scrollbar(frame_tabla, orient="vertical", command=tabla.yview)
+        tabla.configure(yscrollcommand=scrollbar_y.set)
+        scrollbar_y.pack(side="right", fill="y")
+        tabla.pack(fill="both", expand=True)
 
         data = self.sys.inventario.reporte_inventario()
-        if not data:
-            out.insert("end", "No hay hilos registrados.\n")
-        else:
-            out.insert("end", f"{'ID':<4} {'Marca':<15} {'Código':<10} {'Tipo':<18} {'Cant.':<7} {'Precio(Q)':<10} {'Proveedor'}\n")
-            out.insert("end", "-" * 90 + "\n")
-            for h in data:
-                out.insert("end",
-                           f"{h['id']:<4} {h['marca']:<15} {h['codigo_color']:<10} {h['descripcion']:<18} "
-                           f"{h['cantidad']:<7} {h['precio_unitario']:<10.2f} {h['proveedor']}\n")
+        for h in data:
+            tabla.insert(
+                "",
+                "end",
+                values=(h["id"], h["marca"], h["codigo_color"], h["descripcion"], h["cantidad"], f"{h['precio_unitario']:.2f}", h["proveedor"]),
+            )
 
         self.boton_volver(self.frame_actual, self._build_menu)
 
@@ -964,7 +1401,7 @@ class AppGUI:
         # Cierra sesión si estaba abierta
         try:
             self.sys.cerrar_sesion()
-        except:
+        except Exception:
             pass
         self.root.destroy()
 
