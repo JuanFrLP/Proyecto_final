@@ -645,10 +645,6 @@ class AppGUI:
 
     # ---------- NUEVOS HELPERS: Lote/Tabla ----------
     def _init_tabla_lote(self, columns):
-        """
-        Crea una tabla (Treeview) para mostrar operaciones en lote con columnas dinámicas.
-        columns: lista de tuplas (id_col, header, width, anchor)
-        """
         self.lote = []  # cada item: {"accion": str, "datos": dict}
         frame_tabla = ctk.CTkFrame(self.frame_actual)
         frame_tabla.pack(fill="both", expand=True, padx=20, pady=20)
@@ -673,10 +669,6 @@ class AppGUI:
             self.tabla.insert("", "end", values=values_tuple)
 
     def _confirmar_lote(self):
-        """
-        Ejecuta el lote: intenta todo lo posible y reporta aciertos/errores.
-        Muestra detalles, incluyendo el TOTAL de cada venta registrada.
-        """
         if not getattr(self, "lote", None):
             messagebox.showinfo("Lote vacío", "No hay operaciones para confirmar.")
             return
